@@ -1,30 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { UploadCloud, X } from "lucide-react";
-
-import { Simpanan } from "@/types/admin/simpanan";
-import { useGetSimpananCategoryListQuery } from "@/services/master/simpanan-category.service";
-import { formatRupiah, parseRupiah } from "@/lib/format-utils";
-import { AnggotaPicker } from "../ui/anggota-picker";
-import { PaymentChannelSelect } from "../ui/payment-channel-select";
-import { PaymentMethodSelect } from "../ui/payment-method-select";
+import { InputSimpanan } from "@/types/admin/simpanan/input-simpanan";
+import { Combobox } from "@/components/ui/combo-box";
+import type React from "react";
 
 type CategoryItem = { id: number; name: string; code?: string | null };
+type AnggotaItem = { id: number; name?: string; email?: string };
 
 type Props = {
-  form: Partial<Simpanan>;
-  setForm: (data: Partial<Simpanan>) => void;
+  form: Partial<InputSimpanan>;
+  setForm: (data: Partial<InputSimpanan>) => void;
   onCancel: () => void;
   onSubmit: () => void;
   readonly?: boolean;
   isLoading?: boolean;
+  categories: CategoryItem[];
+  showAllCategories: boolean;
+  setShowAllCategories: (v: boolean) => void;
+  anggota?: AnggotaItem[]; // passed from page
+  anggotaLoading?: boolean;
 };
 
 export default function FormSimpanan({
@@ -34,418 +32,162 @@ export default function FormSimpanan({
   onSubmit,
   readonly = false,
   isLoading = false,
+  categories,
+  showAllCategories,
+  setShowAllCategories,
+  anggota = [],
+  anggotaLoading = false,
 }: Props) {
-  const [dragActive, setDragActive] = useState(false);
-
-  const { data: categoriesData } = useGetSimpananCategoryListQuery({
-    page: 1,
-    paginate: 100,
-  });
-  const categories: CategoryItem[] = (categoriesData?.data ??
-    []) as CategoryItem[];
-
-  const SimpananTypes = [
-    { id: "automatic", label: "AUTOMATIC", value: "automatic" as const },
-    { id: "manual", label: "MANUAL", value: "manual" as const },
-  ];
-
-  const nominalPresets: number[] = [
-    50_000, 120_000, 500_000, 1_000_000, 5_000_000, 10_000_000,
-  ];
-
-  const selectedMethod: "automatic" | "manual" | undefined =
-    (form.type as "automatic" | "manual" | undefined) ?? undefined;
-
-  const onPickFile = (file: File | null) => {
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Ukuran file melebihi 5MB.");
-      return;
-    }
-    setForm({ ...form, image: file });
-  };
-
-  const handleDrop: React.DragEventHandler<HTMLDivElement> = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    const f = e.dataTransfer.files?.[0] ?? null;
-    if (f) onPickFile(f);
-  };
-
-  const SimpananStatus = {
-    "0": "MENUNGGU",
-    "1": "DITERIMA",
-    "2": "DITOLAK",
-  } as const;
-
-  const isAuto = form.type === "automatic";
+  // show first 6 categories, apabila lebih tampilkan tombol +N
+  const visibleCategories = showAllCategories
+    ? categories
+    : categories.slice(0, 6);
+  const remainingCount = Math.max(0, categories.length - 6);
+  const isCreateMode = typeof form.id === "undefined" || form.id === null;
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-4xl space-y-6 max-h-[90vh] overflow-y-auto">
+    <div className="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-2xl space-y-6 max-h-[90vh] overflow-y-auto">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-semibold">
           {readonly
             ? "Detail Simpanan"
-            : form.id
-            ? "Edit Simpanan"
-            : "Tambah Simpanan"}
+            : isCreateMode
+            ? "Tambah Simpanan"
+            : "Edit Simpanan"}
         </h2>
         <Button variant="ghost" onClick={onCancel} aria-label="Tutup">
           ✕
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* KATEGORI */}
-        <div className="md:col-span-2">
-          <Label className="mb-2 block">Kategori Simpanan *</Label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            {categories.map((c) => {
-              const active = form.simpanan_category_id === c.id;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  disabled={readonly}
-                  onClick={() =>
-                    setForm({ ...form, simpanan_category_id: c.id })
-                  }
-                  className={[
-                    "h-12 rounded-2xl border text-sm font-semibold shadow-sm transition-all",
-                    active
-                      ? "border-neutral-800 bg-neutral-900 text-white"
-                      : "border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50",
-                    "disabled:opacity-60",
-                  ].join(" ")}
-                >
-                  {c.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* NOMINAL */}
-        <div className="md:col-span-2">
-          <Label className="mb-2 block">Pilih Nominal Simpanan</Label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {nominalPresets.map((n) => {
-              const active = form.nominal === n;
-              return (
-                <button
-                  key={n}
-                  type="button"
-                  disabled={readonly}
-                  onClick={() => setForm({ ...form, nominal: n })}
-                  className={[
-                    "h-12 rounded-2xl border text-sm font-semibold shadow-sm transition-all",
-                    active
-                      ? "border-neutral-800 bg-neutral-900 text-white"
-                      : "border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50",
-                    "disabled:opacity-60",
-                  ].join(" ")}
-                >
-                  {n.toLocaleString("id-ID")}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-4">
-            <Label className="mb-2 block">Atau Masukkan Jumlah Lain</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500">
-                Rp
-              </span>
-              <Input
-                type="text"
-                inputMode="numeric"
-                className="pl-9 h-12 rounded-2xl"
-                value={formatRupiah(form.nominal ?? "")}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const parsed = parseRupiah(raw);
-                  setForm({
-                    ...form,
-                    nominal: raw === "" ? undefined : parsed,
-                  });
-                }}
-                readOnly={readonly}
-                placeholder="Contoh: 60000"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Anggota */}
-        <div className="flex flex-col gap-y-2">
-          <Label>Anggota *</Label>
-          <AnggotaPicker
-            selectedId={typeof form.user_id === "number" ? form.user_id : null}
-            onChange={(u) =>
-              setForm({ ...form, user_id: u ? Number(u.id) : undefined })
-            }
-            disabled={readonly}
-          />
-        </div>
-
-        {/* Tanggal */}
-        <div className="flex flex-col gap-y-2">
-          <Label>Tanggal Simpanan *</Label>
-          <Input
-            type="datetime-local"
-            className="h-12 rounded-2xl"
-            value={
-              form.date ? new Date(form.date).toISOString().slice(0, 16) : ""
-            }
-            onChange={(e) => setForm({ ...form, date: e.target.value })}
-            readOnly={readonly}
-          />
-        </div>
-
-        {/* Jenis (automatic/manual) */}
-        <div>
-          <Label className="mb-2 block">Metode Pembayaran</Label>
-          <RadioGroup
-            className="grid grid-cols-2 gap-3 w-full"
-            value={selectedMethod ?? ""}
-            onValueChange={(val: "automatic" | "manual") => {
-              // reset payment fields saat switching
-              setForm({
-                ...form,
-                type: val,
-                payment_method: undefined,
-                payment_channel: undefined,
-              });
-            }}
-            disabled={readonly}
-          >
-            {SimpananTypes.map((t) => (
-              <label
-                key={t.id}
-                className="w-full flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-4 py-3 shadow-sm"
-              >
-                <RadioGroupItem value={t.value} id={t.id} />
-                <span className="text-sm font-medium">{t.label}</span>
-              </label>
-            ))}
-          </RadioGroup>
-        </div>
-
-        {/* ====== FIELD PAYMENT BARU ====== */}
-        {/* Automatic: pilih method (bank_transfer/qris), dan channel (bank atau 'qris') */}
-        {isAuto && (
-          <>
-            <div>
-              <Label className="mb-2 block">Payment Method *</Label>
-              <PaymentMethodSelect
-                mode="automatic"
-                value={form.payment_method}
-                onChange={(v) => {
-                  if (v === "qris") {
-                    setForm({
-                      ...form,
-                      payment_method: "qris",
-                      payment_channel: "qris",
-                    });
-                  } else if (v === "bank_transfer") {
-                    setForm({
-                      ...form,
-                      payment_method: "bank_transfer",
-                      payment_channel: undefined,
-                    });
-                  } else {
-                    // custom value tetap diperbolehkan
-                    setForm({
-                      ...form,
-                      payment_method: v,
-                      payment_channel: undefined,
-                    });
-                  }
-                }}
-                disabled={readonly}
-              />
-            </div>
-
-            <div>
-              <Label className="mb-2 block">Payment Channel *</Label>
-              <PaymentChannelSelect
-                mode="automatic"
-                method={form.payment_method}
-                value={form.payment_channel}
-                onChange={(v) => setForm({ ...form, payment_channel: v })}
-                disabled={readonly}
-              />
-            </div>
-          </>
-        )}
-
-        {form.type === "manual" && (
-          <>
-            <div>
-              <Label className="mb-2 block">Payment Method (Manual)</Label>
-              <PaymentMethodSelect
-                mode="manual"
-                value={form.payment_method}
-                onChange={(v) => {
-                  // jika user memilih qris → channel ikut qris
-                  if (v === "qris") {
-                    setForm({
-                      ...form,
-                      payment_method: "qris",
-                      payment_channel: "qris",
-                    });
-                  } else {
-                    setForm({ ...form, payment_method: v });
-                  }
-                }}
-                disabled={readonly}
-              />
-            </div>
-
-            <div>
-              <Label className="mb-2 block">Payment Channel (Manual)</Label>
-              <PaymentChannelSelect
-                mode="manual"
-                method={form.payment_method}
-                value={form.payment_channel}
-                onChange={(v) => setForm({ ...form, payment_channel: v })}
-                disabled={readonly}
-              />
-            </div>
-          </>
-        )}
-
-        {/* Deskripsi */}
-        <div className="md:col-span-2">
-          <Label className="mb-2">Deskripsi (Opsional)</Label>
-          <Textarea
-            value={form.description ?? ""}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            readOnly={readonly}
-            rows={3}
-          />
-        </div>
-
-        {/* Upload bukti (hidden saat automatic) */}
-        {form.type !== "automatic" && (
-          <div className="md:col-span-2">
-            <Label className="mb-2 block">
-              Upload Bukti Transfer (Opsional)
-            </Label>
-
-            {readonly ? (
-              form.image && typeof form.image === "string" ? (
-                <div className="border rounded-xl p-2">
-                  <Image
-                    src={form.image}
-                    alt="Bukti transfer"
-                    className="h-32 w-auto object-contain mx-auto"
-                    width={300}
-                    height={128}
-                  />
-                </div>
-              ) : (
-                <span className="text-sm text-gray-500 p-2 border rounded-xl inline-block">
-                  Tidak ada gambar
-                </span>
-              )
-            ) : (
-              <>
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDragActive(true);
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDragActive(false);
-                  }}
-                  onDrop={handleDrop}
-                  className={[
-                    "flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-6 text-center transition",
-                    dragActive
-                      ? "border-neutral-800 bg-neutral-50"
-                      : "border-neutral-300",
-                  ].join(" ")}
-                >
-                  <UploadCloud className="h-6 w-6" />
-                  <p className="text-sm font-medium">
-                    Tarik & letakkan gambar di sini
-                  </p>
-                  <p className="text-xs text-neutral-500">
-                    atau klik tombol di bawah • Maks 5MB
-                  </p>
-                  <div className="mt-3">
-                    <input
-                      id="bukti-input"
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        document.getElementById("bukti-input")?.click()
-                      }
-                    >
-                      Pilih gambar
-                    </Button>
-                  </div>
-                </div>
-
-                {form.image && (
-                  <div className="mt-3 flex items-center gap-3 rounded-xl border p-3">
-                    {typeof form.image === "string" ? (
-                      <Image
-                        src={form.image}
-                        alt="Bukti"
-                        width={72}
-                        height={72}
-                        className="h-18 w-18 rounded-lg object-contain bg-white"
-                      />
-                    ) : (
-                      <span className="text-sm">{form.image.name}</span>
-                    )}
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="ml-auto"
-                      onClick={() => setForm({ ...form, image: undefined })}
-                      aria-label="Hapus bukti"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* readonly info */}
-        {typeof form.status !== "undefined" && (
-          <div className="flex flex-col gap-y-1 col-span-2">
-            <Label>Status</Label>
-            <Input
-              value={
-                SimpananStatus[
-                  String(form.status) as keyof typeof SimpananStatus
-                ]
+      {/* CREATE MODE: pilih anggota + kategori (reference_id) */}
+      {isCreateMode ? (
+        <div className="space-y-4">
+          <div>
+            <Label>Anggota *</Label>
+            <Combobox
+              value={typeof form.user_id === "number" ? form.user_id : null}
+              onChange={(v) => setForm({ ...form, user_id: v })}
+              onSearchChange={() => {}}
+              data={anggota}
+              isLoading={anggotaLoading}
+              placeholder="Pilih anggota"
+              getOptionLabel={(item) =>
+                `${item.name ?? "User"} (${item.email ?? "-"})`
               }
-              readOnly
-              className="bg-gray-100 dark:bg-zinc-700"
             />
           </div>
-        )}
-      </div>
 
+          <div>
+            <Label className="block">Produk Simpanan *</Label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {visibleCategories.map((c) => {
+                const active = form.reference_id === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    disabled={readonly}
+                    onClick={() => setForm({ ...form, reference_id: c.id })}
+                    className={[
+                      "h-12 rounded-2xl border text-sm font-semibold shadow-sm transition-all",
+                      active
+                        ? "border-neutral-800 bg-neutral-900 text-white"
+                        : "border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50",
+                      "disabled:opacity-60",
+                    ].join(" ")}
+                  >
+                    {c.name}
+                  </button>
+                );
+              })}
+
+              {remainingCount > 0 && !showAllCategories && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllCategories(true)}
+                  className="h-12 rounded-2xl border border-dashed text-sm font-semibold shadow-sm bg-white"
+                  title={`Tampilkan ${remainingCount} kategori lainnya`}
+                >
+                  +{remainingCount}
+                </button>
+              )}
+
+              {showAllCategories && remainingCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllCategories(false)}
+                  className="h-12 rounded-2xl border text-sm font-semibold shadow-sm bg-white"
+                >
+                  Tampilkan sedikit
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="text-sm text-neutral-600">
+            Pilih anggota dan kategori. Setelah klik <b>Simpan</b>, sistem akan
+            membuat wallet (simpan).
+          </div>
+        </div>
+      ) : (
+        // UPDATE / DETAIL mode: tampilkan editable fields (name, account_number, description)
+        <div className="grid grid-cols-1 gap-4">
+          <div>
+            <Label>Nama Simpanan</Label>
+            <Input
+              value={form.name ?? ""}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              readOnly={readonly}
+              placeholder="Contoh: Simpanan Wajib"
+              className="h-10 rounded"
+            />
+          </div>
+
+          <div>
+            <Label>No. Rekening</Label>
+            <Input
+              value={form.account_number ?? ""}
+              onChange={(e) =>
+                setForm({ ...form, account_number: e.target.value })
+              }
+              readOnly={readonly}
+              placeholder="Contoh: 00117633xxxx"
+              className="h-10 rounded"
+            />
+          </div>
+
+          <div>
+            <Label>Deskripsi (opsional)</Label>
+            <Textarea
+              value={form.description ?? ""}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
+              readOnly={readonly}
+              rows={4}
+            />
+          </div>
+
+          <div>
+            <Label>Anggota</Label>
+            <div className="text-sm text-neutral-700">
+              {form.user?.name ?? `User ID: ${form.user_id ?? "-"}`}
+            </div>
+          </div>
+
+          <div>
+            <Label>Kategori</Label>
+            <div className="text-sm text-neutral-700">
+              {form.reference
+                ? form.reference.name
+                : `ID: ${form.reference_id ?? "-"}`}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Actions */}
       {!readonly && (
         <div className="pt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={onCancel}>
@@ -454,6 +196,12 @@ export default function FormSimpanan({
           <Button onClick={onSubmit} disabled={isLoading}>
             {isLoading ? "Menyimpan..." : "Simpan"}
           </Button>
+        </div>
+      )}
+
+      {readonly && (
+        <div className="pt-4 flex justify-end">
+          <Button onClick={onCancel}>Tutup</Button>
         </div>
       )}
     </div>

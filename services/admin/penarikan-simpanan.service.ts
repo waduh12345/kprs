@@ -1,24 +1,56 @@
+import {
+  CreateSimpananRequest,
+} from "@/types/admin/simpanan/input-simpanan";
+import {   Balance,
+  Transfer,
+  InputSimpanan,
+  Reference} from "@/types/admin/simpanan/input-simpanan";
 import { apiSlice } from "../base-query";
 import {
   PenarikanSimpanan,
-  PenarikanSimpananResponse,
   CreatePenarikanSimpananRequest,
   UpdatePenarikanSimpananRequest,
   Wallet,
-  WalletResponse,
 } from "@/types/admin/penarikan-simpanan";
+
+interface ApiResponse<T> {
+  code: number;
+  message: string;
+  data: T;
+}
+
+interface Paginated<T> {
+  data: T[];
+  last_page: number;
+  current_page: number;
+  total: number;
+  per_page: number;
+}
+
+export interface WalletHistory {
+  id: number;
+  wallet_id: number;
+  type: string; // contoh: 'credit' | 'debit'
+  amount: number;
+  description?: string | null;
+  balance_before?: number | null;
+  balance_after?: number | null;
+  reference?: Reference | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+/**
+ * Jika transfer endpoint mengembalikan struktur khusus, ubah TransferResult.
+ * Untuk saat ini asumsikan backend mengembalikan data transaksi (WalletHistory).
+ */
+type TransferResult = WalletHistory;
 
 const penarikanSimpananApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     // 🔍 Get All Penarikan Simpanan (with pagination)
     getPenarikanSimpananList: builder.query<
-      {
-        data: PenarikanSimpanan[];
-        last_page: number;
-        current_page: number;
-        total: number;
-        per_page: number;
-      },
+      Paginated<PenarikanSimpanan>,
       { page: number; paginate: number }
     >({
       query: ({ page, paginate }) => ({
@@ -29,14 +61,11 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
           paginate,
         },
       }),
-      transformResponse: (response: PenarikanSimpananResponse) => ({
-        data: response.data.data,
-        last_page: response.data.last_page,
-        current_page: response.data.current_page,
-        total: response.data.total,
-        per_page: response.data.per_page,
-      }),
+      transformResponse: (
+        response: ApiResponse<Paginated<PenarikanSimpanan>>
+      ) => response.data,
     }),
+
     // ➕ Create Penarikan Simpanan
     createPenarikanSimpanan: builder.mutation<
       PenarikanSimpanan,
@@ -47,12 +76,10 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
         method: "POST",
         body: payload,
       }),
-      transformResponse: (response: {
-        code: number;
-        message: string;
-        data: PenarikanSimpanan;
-      }) => response.data,
+      transformResponse: (response: ApiResponse<PenarikanSimpanan>) =>
+        response.data,
     }),
+
     // ✏️ Update Penarikan Simpanan by ID
     updatePenarikanSimpanan: builder.mutation<
       PenarikanSimpanan,
@@ -63,27 +90,19 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
         method: "PUT",
         body: payload,
       }),
-      transformResponse: (response: {
-        code: number;
-        message: string;
-        data: PenarikanSimpanan;
-      }) => response.data,
+      transformResponse: (response: ApiResponse<PenarikanSimpanan>) =>
+        response.data,
     }),
+
     // ❌ Delete Penarikan Simpanan by ID
-    deletePenarikanSimpanan: builder.mutation<
-      { code: number; message: string },
-      number
-    >({
+    deletePenarikanSimpanan: builder.mutation<ApiResponse<null>, number>({
       query: (id) => ({
         url: `/wallet/withdrawals/${id}`,
         method: "DELETE",
       }),
-      transformResponse: (response: {
-        code: number;
-        message: string;
-        data: null;
-      }) => response,
+      transformResponse: (response: ApiResponse<null>) => response,
     }),
+
     // 🔄 Update Status Penarikan
     updatePenarikanStatus: builder.mutation<
       PenarikanSimpanan,
@@ -94,39 +113,123 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
         method: "PUT",
         body: { status },
       }),
-      transformResponse: (response: {
-        code: number;
-        message: string;
-        data: PenarikanSimpanan;
-      }) => response.data,
+      transformResponse: (response: ApiResponse<PenarikanSimpanan>) =>
+        response.data,
     }),
 
+    // ===========================
+    // Wallet endpoints (added)
+    // ===========================
+
+    // 🔍 Get Wallet List
     getWalletList: builder.query<
+      Paginated<Wallet>,
       {
-        data: Wallet[];
-        last_page: number;
-        current_page: number;
-        total: number;
-        per_page: number;
-      },
-      { page: number; paginate: number; user_id?: number }
+        page: number;
+        paginate: number;
+        user_id?: number;
+        searchBySpecific?: string;
+        search?: string;
+      }
     >({
-      query: ({ page, paginate, user_id }) => ({
+      query: ({
+        page,
+        paginate,
+        user_id,
+        searchBySpecific = "account_number",
+        search,
+      }) => ({
         url: `/wallet`,
         method: "GET",
         params: {
           page,
           paginate,
-          user_id, // 🟡 kirim user_id ke params jika ada
+          user_id,
+          searchBySpecific,
+          ...(search ? { search } : {}),
         },
       }),
-      transformResponse: (response: WalletResponse) => ({
-        data: response.data.data,
-        last_page: response.data.last_page,
-        current_page: response.data.current_page,
-        total: response.data.total,
-        per_page: response.data.per_page,
+      transformResponse: (response: ApiResponse<Paginated<Wallet>>) =>
+        response.data,
+    }),
+
+    // ➕ Create Simpanan (Input)
+    createSimpanan: builder.mutation<Wallet, CreateSimpananRequest>({
+      query: (payload) => ({
+        url: `/wallet`,
+        method: "POST",
+        body: payload,
       }),
+      transformResponse: (response: ApiResponse<Wallet>) => response.data,
+    }),
+
+    // 🔎 Get Wallet By ID
+    getWalletById: builder.query<Wallet, number>({
+      query: (id) => ({
+        url: `/wallet/${id}`,
+        method: "GET",
+      }),
+      transformResponse: (response: ApiResponse<Wallet>) => response.data,
+    }),
+
+    // ✏️ Update Wallet by ID
+    updateWallet: builder.mutation<
+      Wallet,
+      { id: number; payload: Partial<InputSimpanan> }
+    >({
+      query: ({ id, payload }) => ({
+        url: `/wallet/${id}`,
+        method: "PUT",
+        body: payload,
+      }),
+      transformResponse: (response: ApiResponse<Wallet>) => response.data,
+    }),
+
+    // ❌ Delete Wallet by ID
+    deleteWallet: builder.mutation<ApiResponse<null>, number>({
+      query: (id) => ({
+        url: `/wallet/${id}`,
+        method: "DELETE",
+      }),
+      transformResponse: (response: ApiResponse<null>) => response,
+    }),
+
+    // 💰 Get Balance
+    getWalletBalance: builder.query<Balance, { user_id?: number } | void>({
+      query: (params) => ({
+        url: `/wallet/balance`,
+        method: "GET",
+        params: params ?? undefined,
+      }),
+      transformResponse: (response: ApiResponse<Balance>) => response.data,
+    }),
+
+    // 📜 Get Histories (paginated)
+    getWalletHistories: builder.query<
+      Paginated<WalletHistory>,
+      { page: number; paginate: number; wallet_id?: number }
+    >({
+      query: ({ page, paginate, wallet_id }) => ({
+        url: `/wallet/histories`,
+        method: "GET",
+        params: {
+          page,
+          paginate,
+          wallet_id,
+        },
+      }),
+      transformResponse: (response: ApiResponse<Paginated<WalletHistory>>) =>
+        response.data,
+    }),
+
+    // 🔁 Transfer
+    transferWallet: builder.mutation<ApiResponse<TransferResult>, Transfer>({
+      query: (payload) => ({
+        url: `/wallet/transfer`,
+        method: "POST",
+        body: payload,
+      }),
+      transformResponse: (response: ApiResponse<TransferResult>) => response,
     }),
   }),
 });
@@ -137,5 +240,14 @@ export const {
   useUpdatePenarikanSimpananMutation,
   useDeletePenarikanSimpananMutation,
   useUpdatePenarikanStatusMutation,
+
+  // wallet
   useGetWalletListQuery,
+  useCreateSimpananMutation,
+  useGetWalletByIdQuery,
+  useUpdateWalletMutation,
+  useDeleteWalletMutation,
+  useGetWalletBalanceQuery,
+  useGetWalletHistoriesQuery,
+  useTransferWalletMutation,
 } = penarikanSimpananApi;

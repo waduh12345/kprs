@@ -48,7 +48,7 @@ export interface CreatePenarikanSimpananRequest {
   bank_account_name: string;
   bank_account_number: string;
   amount: string;
-  description?: string;
+  description?: string | null;
 }
 
 export interface UpdatePenarikanSimpananRequest {

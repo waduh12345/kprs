@@ -2,179 +2,324 @@
 
 import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardFooter,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Search,
-  DollarSign,
-  User,
-  Zap,
   CreditCard,
-  CheckCircle,
-  TrendingUp,
-  TrendingDown,
-  Coins,
   Loader2,
-  Badge,
+  User,
+  CheckCircle as CheckCircleIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
 } from "lucide-react";
 import Swal from "sweetalert2";
-import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { formatRupiahWithRp } from "@/lib/format-utils";
 
-// --- DUMMY DATA & TYPES ---
+import {
+  useGetWalletListQuery,
+  useCreatePenarikanSimpananMutation,
+} from "@/services/admin/penarikan-simpanan.service";
 
-interface RekeningSimpanan {
-  no_rekening: string;
-  anggota_name: string;
-  produk: string;
-  saldo_terakhir: number;
-  tipe_simpanan: "Pokok" | "Wajib" | "Sukarela";
-}
+import { useCreateSimpananMutation } from "@/services/admin/simpanan.service";
 
-const initialDummyData: RekeningSimpanan[] = [
-  {
-    no_rekening: "SWJ-001",
-    anggota_name: "Budi Santoso",
-    produk: "Simpanan Sukarela",
-    saldo_terakhir: 1500000,
-    tipe_simpanan: "Sukarela",
-  },
-  {
-    no_rekening: "WJB-002",
-    anggota_name: "Siti Rahayu",
-    produk: "Simpanan Wajib",
-    saldo_terakhir: 5000000,
-    tipe_simpanan: "Wajib",
-  },
-  {
-    no_rekening: "POK-003",
-    anggota_name: "Joko Widodo",
-    produk: "Simpanan Pokok",
-    saldo_terakhir: 1000000,
-    tipe_simpanan: "Pokok",
-  },
-];
+import type {
+  Wallet,
+  CreatePenarikanSimpananRequest,
+} from "@/types/admin/penarikan-simpanan";
+import type { CreateSimpananRequest } from "@/types/admin/simpanan";
 
-// --- HELPER FUNCTIONS ---
+import { FetchBaseQueryError } from "@reduxjs/toolkit/query";
 
-const formatRupiah = (number: number) => {
-  if (isNaN(number) || number === null || number === undefined) return 'Rp 0';
-  return new Intl.NumberFormat("id-ID", {
+/* Helper: parse nominal & format */
+const parseNominal = (value: string) => {
+  const parsed = parseFloat(value.replace(/[^0-9]/g, ""));
+  return isNaN(parsed) ? 0 : parsed;
+};
+const formatRupiah = (num: number) =>
+  new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
-  }).format(number);
-};
+  }).format(num);
 
-const parseNominal = (value: string) => {
-    const parsed = parseFloat(value.replace(/[^0-9]/g, ''));
-    return isNaN(parsed) ? 0 : parsed;
+/* extract message from FetchBaseQueryError without using any */
+function extractMessageFromFetchBaseQueryError(
+  fbq: FetchBaseQueryError
+): string {
+  const data = (fbq as unknown as { data?: unknown }).data;
+  if (typeof data === "string") return data;
+  if (typeof data === "object" && data !== null) {
+    const d = data as Record<string, unknown>;
+    if ("message" in d && typeof d.message === "string") return d.message;
+    if ("errors" in d) {
+      try {
+        return JSON.stringify(d.errors);
+      } catch {
+        // fallback
+      }
+    }
+    try {
+      return JSON.stringify(d);
+    } catch {
+      // noop
+    }
+  }
+  if ("status" in fbq) {
+    const status = (fbq as unknown as { status?: unknown }).status;
+    return `Error ${String(status ?? "")}`.trim();
+  }
+  return "Terjadi kesalahan pada server";
 }
-
-// --- KOMPONEN UTAMA ---
 
 export default function TransaksiSimpananPage() {
   const [rekeningNumber, setRekeningNumber] = useState("");
-  const [dataRekening, setDataRekening] = useState<RekeningSimpanan | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  
-  const [transaksiType, setTransaksiType] = useState<"SETOR" | "TARIK">("SETOR");
+  const [dataRekening, setDataRekening] = useState<Wallet | null>(null);
+
+  // search trigger: value passed to query
+  const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // transaksi state
+  const [transaksiType, setTransaksiType] = useState<"SETOR" | "TARIK">(
+    "SETOR"
+  );
   const [nominalInput, setNominalInput] = useState<string>("");
   const [keterangan, setKeterangan] = useState<string>("");
+
+  // processing flags
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // error message for search
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  const nominalTransaksi = useMemo(() => parseNominal(nominalInput), [nominalInput]);
+  const nominalTransaksi = useMemo(
+    () => parseNominal(nominalInput),
+    [nominalInput]
+  );
 
-  // --- HANDLER PENCARIAN ---
+  // === Wallet search query (RTK Query) ===
+  const {
+    data: walletResp,
+    isFetching: walletFetching,
+    isLoading: walletLoading,
+    refetch: refetchWallet,
+  } = useGetWalletListQuery(
+    {
+      page: 1,
+      paginate: 1,
+      searchBySpecific: "account_number",
+      search: searchQuery,
+    },
+    { skip: searchQuery.trim() === "" }
+  );
+
+  const foundWallet: Wallet | null =
+    walletResp && Array.isArray(walletResp.data) && walletResp.data.length > 0
+      ? walletResp.data[0]
+      : null;
+
+  // === Mutations ===
+  const [createPenarikan] = useCreatePenarikanSimpananMutation();
+  const [createSimpanan] = useCreateSimpananMutation();
+
+  const isSearching = walletFetching || walletLoading;
+
+  // === Handlers ===
   const handleSearch = () => {
-    if (!rekeningNumber.trim()) {
-      setSearchError("Masukkan Nomor Rekening Simpanan.");
-      setDataRekening(null);
-      return;
-    }
-    
-    setIsSearching(true);
     setSearchError(null);
     setDataRekening(null);
 
-    // Simulasi pencarian API
-    setTimeout(() => {
-      const found = initialDummyData.find(d => d.no_rekening === rekeningNumber.trim().toUpperCase());
-      
-      if (found) {
-        setDataRekening(found);
-        setSearchError(null);
-      } else {
-        setSearchError(`Nomor Rekening ${rekeningNumber} tidak ditemukan.`);
-      }
-      setIsSearching(false);
-    }, 1000);
+    const trimmed = rekeningNumber.trim();
+    if (!trimmed) {
+      setSearchError("Masukkan Nomor Rekening Simpanan.");
+      return;
+    }
+
+    setSearchQuery(trimmed);
   };
-  
-  // --- HANDLER TRANSAKSI ---
+
+  // sync dataRekening from query result
+  React.useEffect(() => {
+    if (foundWallet) {
+      setDataRekening(foundWallet);
+      setSearchError(null);
+    } else if (searchQuery.trim() !== "" && !isSearching) {
+      setDataRekening(null);
+      setSearchError(`Nomor Rekening ${searchQuery} tidak ditemukan.`);
+    }
+  }, [foundWallet, isSearching, searchQuery]);
+
   const handleTransaksi = async () => {
-    if (!dataRekening || nominalTransaksi <= 0) {
-      return Swal.fire("Gagal", "Nominal transaksi harus lebih dari nol.", "error");
+    if (!dataRekening) {
+      await Swal.fire("Gagal", "Pilih rekening terlebih dahulu.", "error");
+      return;
     }
-    
-    // Validasi Penarikan
-    if (transaksiType === "TARIK" && nominalTransaksi > dataRekening.saldo_terakhir) {
-      return Swal.fire("Gagal", "Saldo tidak mencukupi untuk penarikan ini.", "error");
+    if (nominalTransaksi <= 0) {
+      await Swal.fire(
+        "Gagal",
+        "Nominal transaksi harus lebih dari nol.",
+        "error"
+      );
+      return;
     }
-    // Tambahan validasi untuk Simpanan Pokok/Wajib (Biasanya tidak boleh ditarik)
-    if (transaksiType === "TARIK" && (dataRekening.tipe_simpanan === "Pokok" || dataRekening.tipe_simpanan === "Wajib")) {
-        return Swal.fire("Ditolak", `${dataRekening.tipe_simpanan} hanya bisa ditarik jika anggota keluar/mengundurkan diri.`, "error");
+
+    // withdrawal rules
+    if (
+      transaksiType === "TARIK" &&
+      nominalTransaksi > (dataRekening.balance ?? 0)
+    ) {
+      await Swal.fire(
+        "Gagal",
+        "Saldo tidak mencukupi untuk penarikan ini.",
+        "error"
+      );
+      return;
+    }
+
+    const prodName = (dataRekening.reference?.name ?? "").toLowerCase();
+    if (
+      transaksiType === "TARIK" &&
+      (prodName.includes("wajib") || prodName.includes("pokok"))
+    ) {
+      await Swal.fire(
+        "Ditolak",
+        `${
+          dataRekening.reference?.name ?? "Produk"
+        } biasanya tidak bisa ditarik.`,
+        "error"
+      );
+      return;
     }
 
     const actionText = transaksiType === "SETOR" ? "Setor" : "Tarik";
-    const newSaldo = transaksiType === "SETOR" ? dataRekening.saldo_terakhir + nominalTransaksi : dataRekening.saldo_terakhir - nominalTransaksi;
+    const newBalance =
+      transaksiType === "SETOR"
+        ? (dataRekening.balance ?? 0) + nominalTransaksi
+        : (dataRekening.balance ?? 0) - nominalTransaksi;
 
-    const { isConfirmed } = await Swal.fire({
+    const confirm = await Swal.fire({
       title: `Konfirmasi Transaksi ${actionText}`,
-      html: `
-        <p class="text-left mb-2">Anggota: <b>${dataRekening.anggota_name}</b></p>
-        <p class="text-left mb-2">Nominal ${actionText}: <b>${formatRupiah(nominalTransaksi)}</b></p>
-        <p class="text-left mb-4">Saldo Akhir Baru: <b>${formatRupiah(newSaldo)}</b></p>
-      `,
+      html: `<p class="text-left">Anggota: <b>${
+        dataRekening.user?.name ?? "-"
+      }</b></p>
+           <p class="text-left">Produk: <b>${
+             dataRekening.reference?.name ?? "-"
+           }</b></p>
+           <p class="text-left">Nominal: <b>${formatRupiah(
+             nominalTransaksi
+           )}</b></p>
+           <p class="text-left">Saldo Akhir: <b>${formatRupiah(
+             newBalance
+           )}</b></p>`,
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: `Proses ${actionText}`,
     });
 
-    if (!isConfirmed) return;
+    if (!confirm.isConfirmed) return;
 
     setIsProcessing(true);
-    
-    // Simulasi pemrosesan API
-    setTimeout(() => {
-      // Update dummy data (simulasi update saldo)
-      const updatedData = initialDummyData.map(d => {
-        if (d.no_rekening === dataRekening.no_rekening) {
-          return { ...d, saldo_terakhir: newSaldo };
-        }
-        return d;
-      });
-      
-      // Update state dengan saldo baru
-      setDataRekening(prev => prev ? { ...prev, saldo_terakhir: newSaldo } : null);
 
-      setIsProcessing(false);
+    try {
+      if (transaksiType === "SETOR") {
+        // --- CREATE SIMPANAN (SETOR) ---
+        // Kirim payload lengkap dengan fallback fields supaya backend tidak menolak.
+        const today = new Date().toISOString().split("T")[0]; // 'YYYY-MM-DD'
+
+        // NOTE: CreateSimpananRequest membutuhkan simpanan_category_id & user_id (per tipe),
+        // jadi kita isi dari dataRekening jika ada, atau fallback ke 0 (sesuaikan jika backend mengharuskan nilai lain).
+        const payload: CreateSimpananRequest = {
+          simpanan_category_id: (dataRekening.reference?.id as number) ?? 0, // fallback 0 jika tidak ada
+          user_id: (dataRekening.user?.id as number) ?? 0,
+          description: keterangan || undefined,
+          date: today,
+          nominal: Number(nominalTransaksi),
+          type: "manual",
+        };
+
+        // debug log supaya kamu bisa lihat payload sebelum request
+        console.log("createSimpanan payload:", payload);
+
+        await createSimpanan(
+          payload as unknown as CreateSimpananRequest
+        ).unwrap();
+
+        await Swal.fire(
+          "Berhasil",
+          `Setoran ${formatRupiah(nominalTransaksi)} berhasil.`,
+          "success"
+        );
+
+        // optimistic update
+        setDataRekening((prev) =>
+          prev
+            ? { ...prev, balance: (prev.balance ?? 0) + nominalTransaksi }
+            : prev
+        );
+      } else {
+        // --- PENARIKAN (TARIK) ---
+        const withdrawalPayload: Partial<CreatePenarikanSimpananRequest> = {
+          wallet_id: dataRekening.id,
+          amount: String(nominalTransaksi),
+          description: keterangan || null,
+        };
+
+        if (typeof dataRekening.user?.id === "number") {
+          withdrawalPayload.user_id = dataRekening.user.id;
+        }
+
+        await createPenarikan(
+          withdrawalPayload as CreatePenarikanSimpananRequest
+        ).unwrap();
+
+        await Swal.fire(
+          "Berhasil",
+          `Penarikan ${formatRupiah(nominalTransaksi)} berhasil.`,
+          "success"
+        );
+
+        // optimistic update
+        setDataRekening((prev) =>
+          prev
+            ? { ...prev, balance: (prev.balance ?? 0) - nominalTransaksi }
+            : prev
+        );
+      }
+
+      // reset & refetch
       setNominalInput("");
       setKeterangan("");
-      setSearchError(null);
-      setRekeningNumber(""); // Clear search field
-
-      Swal.fire({
-        icon: "success",
-        title: "Transaksi Berhasil!",
-        text: `${actionText} sebesar ${formatRupiah(nominalTransaksi)} berhasil dicatat.`,
-      });
-      
-    }, 2000); 
+      setRekeningNumber("");
+      setSearchQuery("");
+      void refetchWallet();
+    } catch (err) {
+      console.error(err);
+      if (typeof err === "object" && err !== null && "status" in err) {
+        const fbq = err as FetchBaseQueryError;
+        const msg = extractMessageFromFetchBaseQueryError(fbq);
+        await Swal.fire("Gagal", msg, "error");
+      } else {
+        await Swal.fire("Gagal", String(err ?? "Error"), "error");
+      }
+    } finally {
+      setIsProcessing(false);
+    }
   };
-
 
   return (
     <div className="p-6 space-y-6">
@@ -183,13 +328,13 @@ export default function TransaksiSimpananPage() {
         Transaksi Simpanan (Setor & Tarik)
       </h2>
 
-      {/* --- KARTU PENCARIAN REKENING --- */}
       <Card className="shadow-lg border-t-4 border-indigo-500">
         <CardHeader>
           <CardTitle className="text-xl flex items-center gap-2 text-indigo-600">
             <Search className="h-5 w-5" /> Cari Rekening Anggota
           </CardTitle>
         </CardHeader>
+
         <CardContent className="flex gap-4 items-end">
           <div className="flex-grow space-y-2">
             <Label htmlFor="rekening">Nomor Rekening Simpanan</Label>
@@ -199,83 +344,121 @@ export default function TransaksiSimpananPage() {
               value={rekeningNumber}
               onChange={(e) => setRekeningNumber(e.target.value.toUpperCase())}
               onKeyPress={(e) => {
-                if (e.key === 'Enter') handleSearch();
+                if (e.key === "Enter") handleSearch();
               }}
               disabled={isSearching || isProcessing}
             />
           </div>
-          <Button 
-            onClick={handleSearch} 
+          <Button
+            onClick={handleSearch}
             disabled={isSearching || isProcessing}
             className="h-10"
           >
-            {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+            {isSearching ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Search className="h-5 w-5" />
+            )}
           </Button>
         </CardContent>
-        {searchError && <p className="text-sm text-red-500 px-6 pb-4">{searchError}</p>}
+
+        {searchError && (
+          <p className="text-sm text-red-500 px-6 pb-4">{searchError}</p>
+        )}
       </Card>
 
-      {/* --- KARTU DETAIL REKENING & TRANSAKSI --- */}
       {dataRekening && (
         <Card className="shadow-lg border-t-4 border-green-500">
           <CardHeader>
             <CardTitle className="text-xl flex items-center gap-2 text-green-600">
-              <CheckCircle className="h-5 w-5" /> Detail & Input Transaksi
+              <CheckCircleIcon className="h-5 w-5" /> Detail & Input Transaksi
             </CardTitle>
           </CardHeader>
+
           <CardContent>
-            {/* Informasi Rekening */}
             <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b">
               <div>
                 <p className="text-sm text-gray-500">Anggota</p>
-                <p className="font-bold flex items-center gap-1"><User className="h-4 w-4" /> {dataRekening.anggota_name}</p>
+                <p className="font-bold flex items-center gap-1">
+                  <User className="h-4 w-4" /> {dataRekening.user?.name ?? "-"}
+                </p>
               </div>
+
               <div>
                 <p className="text-sm text-gray-500">Produk Simpanan</p>
-                <p className="font-semibold">{dataRekening.produk} <Badge variant="secondary">{dataRekening.tipe_simpanan}</Badge></p>
+                <p className="font-semibold">
+                  {dataRekening.reference?.name ?? "-"}{" "}
+                  <Badge variant="secondary">
+                    {dataRekening.reference?.code ?? ""}
+                  </Badge>
+                </p>
               </div>
+
               <div>
                 <p className="text-sm text-gray-500">Saldo Saat Ini</p>
-                <p className="text-xl font-bold text-primary">{formatRupiah(dataRekening.saldo_terakhir)}</p>
+                <p className="text-xl font-bold text-primary">
+                  {formatRupiah(dataRekening.balance ?? 0)}
+                </p>
               </div>
             </div>
 
-            {/* Formulir Transaksi */}
             <div className="grid grid-cols-4 gap-4">
-              {/* Jenis Transaksi */}
               <div className="col-span-1 space-y-2">
                 <Label htmlFor="type">Jenis Transaksi</Label>
-                <Select onValueChange={(v: "SETOR" | "TARIK") => setTransaksiType(v)} value={transaksiType}>
-                  <SelectTrigger id="type">
+                <Select
+                  onValueChange={(v) =>
+                    setTransaksiType(v as "SETOR" | "TARIK")
+                  }
+                  value={transaksiType}
+                >
+                  <SelectTrigger id="type" className="w-full">
                     <SelectValue placeholder="Pilih Tipe" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="SETOR">Setoran (Deposit)</SelectItem>
-                    <SelectItem value="TARIK" disabled={dataRekening.tipe_simpanan !== "Sukarela"}>
-                        Penarikan (Withdrawal)
+                    <SelectItem
+                      value="TARIK"
+                      disabled={
+                        !(dataRekening.reference?.name ?? "")
+                          .toLowerCase()
+                          .includes("sukarela")
+                      }
+                    >
+                      Penarikan (Withdrawal)
                     </SelectItem>
                   </SelectContent>
                 </Select>
-                {transaksiType === "TARIK" && dataRekening.tipe_simpanan !== "Sukarela" && (
-                    <p className="text-xs text-red-500">Hanya Simpanan Sukarela yang bisa ditarik.</p>
-                )}
+
+                {transaksiType === "TARIK" &&
+                  !(dataRekening.reference?.name ?? "")
+                    .toLowerCase()
+                    .includes("sukarela") && (
+                    <p className="text-xs text-red-500">
+                      Hanya Simpanan Sukarela yang bisa ditarik.
+                    </p>
+                  )}
               </div>
-              
-              {/* Nominal */}
+
               <div className="col-span-1 space-y-2">
                 <Label htmlFor="nominal">Nominal Transaksi</Label>
                 <Input
                   id="nominal"
                   placeholder="0"
                   value={nominalInput}
-                  onChange={(e) => setNominalInput(formatRupiah(parseNominal(e.target.value)).replace('Rp', '').trim())}
+                  onChange={(e) => {
+                    const raw = e.target.value ?? "";
+                    const digitsOnly = String(raw).replace(/\D/g, "");
+                    const asNumber: number =
+                      digitsOnly === "" ? 0 : parseInt(digitsOnly, 10);
+                    const formatted = formatRupiah(asNumber);
+                    setNominalInput(formatted);
+                  }}
                   disabled={isProcessing}
                   className="font-bold text-lg text-right"
                 />
               </div>
 
-              {/* Keterangan */}
-               <div className="col-span-2 space-y-2">
+              <div className="col-span-2 space-y-2">
                 <Label htmlFor="keterangan">Keterangan (Opsional)</Label>
                 <Input
                   id="keterangan"
@@ -286,23 +469,31 @@ export default function TransaksiSimpananPage() {
                 />
               </div>
             </div>
-            
           </CardContent>
+
           <CardFooter>
             <Button
               onClick={handleTransaksi}
               disabled={isProcessing || nominalTransaksi <= 0}
-              className={`w-full text-lg ${transaksiType === "SETOR" ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
+              className={`w-full text-lg ${
+                transaksiType === "SETOR"
+                  ? "bg-green-600 hover:bg-green-700"
+                  : "bg-red-600 hover:bg-red-700"
+              }`}
             >
               {isProcessing ? (
                 <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Memproses...
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Memproses...
                 </>
               ) : (
                 <>
-                  {transaksiType === "SETOR" ? <TrendingUp className="mr-2 h-5 w-5" /> : <TrendingDown className="mr-2 h-5 w-5" />}
-                  Proses {transaksiType === "SETOR" ? 'Setoran' : 'Penarikan'} {formatRupiah(nominalTransaksi)}
+                  {transaksiType === "SETOR" ? (
+                    <TrendingUpIcon className="mr-2 h-5 w-5" />
+                  ) : (
+                    <TrendingDownIcon className="mr-2 h-5 w-5" />
+                  )}
+                  Proses {transaksiType === "SETOR" ? "Setoran" : "Penarikan"}{" "}
+                  {formatRupiah(nominalTransaksi)}
                 </>
               )}
             </Button>
@@ -312,7 +503,8 @@ export default function TransaksiSimpananPage() {
 
       {!dataRekening && !isSearching && !searchError && (
         <p className="text-center text-gray-500 mt-10">
-          Masukkan Nomor Rekening Simpanan di kolom pencarian di atas untuk memulai transaksi.
+          Masukkan Nomor Rekening Simpanan di kolom pencarian di atas untuk
+          memulai transaksi.
         </p>
       )}
     </div>
