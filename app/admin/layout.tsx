@@ -2,26 +2,13 @@
 
 import React, { useState, useEffect } from "react";
 import {
-  Database,
-  ShoppingCart,
-  Users,
-  Package,
-  Tag,
   BookDashed,
+  Users,
   Landmark,
   FileText,
-  LineChart,
-  ClipboardList,
   Settings,
-  UserCheck,
-  GalleryVertical,
-  Newspaper,
-  BookUser,
-  CreditCard,
-  Building,
-  Webhook,
-  FileStack,
-  SmartphoneNfc,
+  GitBranch,
+  Clock,
 } from "lucide-react";
 import Header from "@/components/admin-components/header";
 import Sidebar from "@/components/admin-components/sidebar";
@@ -39,19 +26,24 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   // Close sidebar when screen size changes to desktop
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 1024) {
+      if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
         setSidebarOpen(false);
       }
     };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    if (typeof window !== 'undefined') {
+      window.addEventListener("resize", handleResize);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener("resize", handleResize);
+      }
+    };
   }, []);
 
   // ============
-  // SOURCE OF TRUTH: Semua menu lengkap (superadmin)
+  // SOURCE OF TRUTH: Menu Koperasi (Superadmin)
   // ============
   const superadminMenuItems: MenuItem[] = [
-    // --- Koperasi ---
     {
       id: "dashboard",
       label: "Dashboard",
@@ -62,7 +54,34 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       id: "anggota",
       label: "Anggota",
       icon: <Users className="h-5 w-5" />,
-      href: "/admin/anggota",
+      href: "#",
+      children: [
+        {
+          id: "anggota-data",
+          label: "Data Anggota",
+          href: "/admin/anggota",
+        },
+        {
+          id: "anggota-history",
+          label: "History Anggota",
+          href: "/admin/anggota/history",
+        },
+        {
+          id: "anggota-laporan",
+          label: "Laporan Data Anggota",
+          href: "/admin/anggota/laporan",
+        },
+        {
+          id: "anggota-laporan-perubahan-status",
+          label: "Laporan Perubahan Status",
+          href: "/admin/anggota/laporan-perubahan-status",
+        },
+        {
+          id: "anggota-meninggal",
+          label: "Data Anggota Meninggal",
+          href: "/admin/anggota-meninggal",
+        },
+      ],
     },
     {
       id: "simpanan",
@@ -73,115 +92,272 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         {
           id: "simpanan/simpanan-anggota",
           label: "Simpanan Anggota",
-          href: "/admin/simpanan/simpanan-anggota",
+          href: "/admin/simpanan/anggota",
         },
         {
-          id: "simpanan/kategori",
-          label: "Kategori Simpanan",
-          href: "/admin/simpanan/kategori",
+          id: "simpanan/simpanan-transaksi",
+          label: "Transaksi Simpanan",
+          href: "/admin/simpanan/transaksi",
         },
         {
-          id: "penarikan-simpanan",
-          label: "Penarikan Simpanan",
-          href: "/admin/penarikan-simpanan",
+          id: "simpanan/auto-debet",
+          label: "Auto Debet Simpanan",
+          href: "#",
+          sub_children: [
+            {
+              id: "simpanan/auto-debet/upload-simpanan",
+              label: "Upload Data Simpanan",
+              href: "/admin/simpanan/auto-debet/upload-simpanan",
+            },
+            {
+              id: "simpanan/auto-debet/upload-tagihan",
+              label: "Upload Data Tagihan",
+              href: "/admin/simpanan/auto-debet/upload-tagihan",
+            },
+            {
+              id: "simpanan/auto-debet/proses",
+              label: "Proses Auto Debet",
+              href: "/admin/simpanan/auto-debet/proses",
+            },
+          ]
+        },
+        {
+          id: "simpanan/laporan-simpanan",
+          label: "Laporan Simpanan",
+          href: "#",
+          sub_children: [
+            {
+              id: "simpanan/laporan/mutasi-simpanan",
+              label: "Mutasi Simpanan",
+              href: "/admin/simpanan/laporan/mutasi-simpanan",
+            },
+            {
+              id: "simpanan/laporan/nominatif-simpanan",
+              label: "Nominatif Simpanan",
+              href: "/admin/simpanan/laporan/nominatif-simpanan",
+            },
+          ]
         },
       ],
     },
     {
-      id: "pinjaman",
-      label: "Pinjaman",
+      id: "simpanan-berjangka",
+      label: "Simpanan Berjangka",
+      icon: <GitBranch className="h-5 w-5" />,
+      href: "#",
+      children: [
+        {
+          id: "simpanan-berjangka/data-simjaka",
+          label: "Data Simjaka",
+          href: "/admin/simpanan-berjangka/data",
+        },
+        {
+          id: "simpanan-berjangka/transaksi-simjaka",
+          label: "Transaksi Simjaka",
+          href: "/admin/simpanan-berjangka/transaksi",
+        },
+        {
+          id: "simpanan-berjangka/laporan-simjaka",
+          label: "Laporan Simjaka",
+          href: "/admin/simpanan-berjangka/laporan",
+        },
+        {
+          id: "simpanan-berjangka/simpanan-berjangka/proses-simjaka-harian",
+          label: "Proses Simjaka Harian",
+          href: "/admin/simpanan-berjangka/proses-simjaka-harian",
+        },
+      ],
+    },
+    {
+      id: "pembiayaan",
+      label: "Pembiayaan",
       icon: <FaMoneyBillWave className="h-5 w-5" />,
       href: "#",
       children: [
         {
-          id: "pinjaman/pinjaman-anggota",
-          label: "Pinjaman Anggota",
-          href: "/admin/pinjaman/pinjaman-anggota",
+          id: "pembiayaan/simulasi",
+          label: "Simulasi",
+          href: "/admin/pembiayaan/simulasi",
         },
         {
-          id: "pinjaman/kategori",
-          label: "Kategori Pinjaman",
-          href: "/admin/pinjaman/pinjaman-kategori",
+          id: "pembiayaan/data-pembiayaan",
+          label: "Data Pembiayaan",
+          href: "/admin/pembiayaan/data",
+        },
+        {
+          id: "pembiayaan/transaksi",
+          label: "Transaksi Pembiayaan",
+          href: "#",
+          sub_children: [
+            {
+              id: "pembiayaan/transaksi/realisasi",
+              label: "Realisasi Pembiayaan",
+              href: "/admin/pembiayaan/transaksi/realisasi",
+            },
+            {
+              id: "pembiayaan/transaksi/angsuran",
+              label: "Angsuran Pembiayaan",
+              href: "/admin/pembiayaan/transaksi/angsuran",
+            },
+            {
+              id: "pembiayaan/transaksi/pelunasan",
+              label: "Pelunasan Pembiayaan",
+              href: "/admin/pembiayaan/transaksi/pelunasan",
+            },
+          ]
+        },
+        {
+          id: "pembiayaan/proses-auto-debet",
+          label: "Proses Auto Debet",
+          href: "/admin/pembiayaan/proses-auto-debet",
+        },
+        {
+          id: "pembiayaan/laporan-pembiayaan",
+          label: "Laporan Pembiayaan",
+          href: "#",
+          sub_children: [
+            {
+              id: "pembiayaan/laporan/mutasi",
+              label: "Mutasi Pembiayaan",
+              href: "/admin/pembiayaan/laporan/mutasi",
+            },
+            {
+              id: "pembiayaan/laporan/nominatif",
+              label: "Nominatif Pembiayaan",
+              href: "/admin/pembiayaan/laporan/nominatif",
+            },
+            {
+              id: "pembiayaan/laporan/realisasi",
+              label: "Realisasi Pembiayaan",
+              href: "/admin/pembiayaan/laporan/realisasi",
+            },
+            {
+              id: "pembiayaan/laporan/performance",
+              label: "Performance",
+              href: "/admin/pembiayaan/laporan/performance",
+            },
+          ]
         },
       ],
     },
     {
-      id: "data-keuangan",
-      label: "Data Keuangan",
-      icon: <Landmark className="h-5 w-5" />,
-      href: "#",
-      children: [
-        {
-          id: "data-keuangan/pemotongan-gaji",
-          label: "Data Pemotongan Gaji",
-          href: "/admin/keuangan/gaji",
-        },
-        {
-          id: "data-keuangan/angsuran-pinjaman",
-          label: "Update Angsuran Pinjaman",
-          href: "/admin/keuangan/angsuran-pinjaman",
-        },
-      ],
-    },
-    {
-      id: "anggota-meninggal",
-      label: "Anggota Meninggal",
-      icon: <ClipboardList className="h-5 w-5" />,
-      href: "/admin/anggota-meninggal",
+      id: "tagihan-bank-payroll",
+      label: "Tagihan ke Bank Payroll",
+      icon: <Landmark className="h-5 w-5" />, // Landmark (Bank)
+      href: "/admin/tagihan-bank-payroll",
     },
     {
       id: "akuntansi",
       label: "Akuntansi",
-      icon: <FileText className="h-5 w-5" />,
+      icon: <FileText className="h-5 w-5" />, // FileText (Dokumen/Akuntansi)
       href: "#",
       children: [
         {
-          id: "akuntansi/jurnal-transaksi",
-          label: "Jurnal Transaksi",
-          href: "/admin/akuntansi/jurnal-transaksi",
+          id: "akuntansi/transaksi",
+          label: "Transaksi Akuntansi",
+          href: "/admin/akuntansi/transaksi",
         },
         {
-          id: "akuntansi/saldo-coa",
-          label: "Saldo COA",
-          href: "/admin/akuntansi/saldo-coa",
+          id: "akuntansi/transaksi-jurnal-eliminasi",
+          label: "Transaksi Jurnal Eliminasi",
+          href: "/admin/akuntansi/transaksi-jurnal-eliminasi",
         },
         {
-          id: "akuntansi/buku-besar",
-          label: "Buku Besar",
-          href: "/admin/akuntansi/buku-besar",
+          id: "akuntansi/pembatalan-jurnal",
+          label: "Pembatalan Jurnal",
+          href: "/admin/akuntansi/pembatalan-jurnal",
+        },
+        {
+          id: "akuntansi/pembatalan-jurnal-eliminasi",
+          label: "Pembatalan Jurnal Eliminasi",
+          href: "/admin/akuntansi/pembatalan-jurnal-eliminasi",
+        },
+        {
+          id: "akuntansi/revisi-jurnal",
+          label: "Revisi Jurnal",
+          href: "/admin/akuntansi/revisi-jurnal",
+        },
+        {
+          id: "akuntansi/laporan-akuntansi",
+          label: "Laporan Akuntansi",
+          href: "#",
+          sub_children: [
+            {
+              id: "akuntansi/laporan-akuntansi/neraca",
+              label: "Neraca",
+              href: "/admin/akuntansi/laporan/neraca",
+            },
+            {
+              id: "akuntansi/laporan-akuntansi/neraca-konsolidasi",
+              label: "Neraca Konsolidasi",
+              href: "/admin/akuntansi/laporan/neraca-konsolidasi",
+            },
+            {
+              id: "akuntansi/laporan/laba-rugi",
+              label: "Laba Rugi",
+              href: "/admin/akuntansi/laporan/laba-rugi",
+            },
+            {
+              id: "akuntansi/laporan/laporan-jurnal-transaksi",
+              label: "Laporan Jurnal Transaksi",
+              href: "/admin/akuntansi/laporan/jurnal-transaksi",
+            },
+            {
+              id: "akuntansi/laporan/buku-besar",
+              label: "Laporan Buku Besar",
+              href: "/admin/akuntansi/laporan/buku-besar",
+            },
+            {
+              id: "akuntansi/laporan/laporan-rekonsiliasi-antar-rekening",
+              label: "Laporan Rekonsiliasi Antar Rekening",
+              href: "/admin/akuntansi/laporan/rekonsiliasi-antar-rekening",
+            },
+          ]
         },
       ],
     },
     {
-      id: "laporan",
-      label: "Laporan",
-      icon: <LineChart className="h-5 w-5" />,
+      id: "akhir-bulan-akhir-tahun",
+      label: "Akhir Bulan/Akhir Tahun",
+      icon: <Clock className="h-5 w-5" />, // Clock (Waktu/Periode)
       href: "#",
       children: [
         {
-          id: "laporan/pengajuan-pinjaman",
-          label: "Pengajuan Pinjaman",
-          href: "/admin/laporan/pengajuan-pinjaman",
+          id: "akhir-bulan-akhir-tahun/proses-bunga-simpanan",
+          label: "Proses Bunga Simpanan",
+          href: "/admin/akhir-bulan-akhir-tahun/proses-bunga-simpanan",
         },
         {
-          id: "laporan/nominatif-pinjaman",
-          label: "Nominatif Pinjaman",
-          href: "/admin/laporan/nominatif-pinjaman",
+          id: "akhir-bulan-akhir-tahun/proses-eom",
+          label: "Proses End of Month",
+          href: "/admin/akhir-bulan-akhir-tahun/proses-eom",
         },
         {
-          id: "laporan/nominatif-simpanan",
-          label: "Nominatif Simpanan",
-          href: "/admin/laporan/nominatif-simpanan",
+          id: "akhir-bulan-akhir-tahun/proses-eoy",
+          label: "Proses End of Year",
+          href: "/admin/akhir-bulan-akhir-tahun/proses-eoy",
         },
         {
-          id: "laporan/anggota-meninggal-dunia",
-          label: "Anggota Meninggal Dunia",
-          href: "/admin/laporan/anggota-meninggal-dunia",
-        },
-        {
-          id: "laporan/sisa-hasil-usaha",
-          label: "Sisa Hasil Usaha",
-          href: "/admin/laporan/sisa-hasil-usaha",
+          id: "akhir-bulan-akhir-tahun/proses-shu",
+          label: "Proses Sisa Hasil Usaha",
+          href: "#",
+          sub_children: [
+            {
+              id: "akhir-bulan-akhir-tahun/proses-shu/perhitungan-shu",
+              label: "Perhitungan SHU",
+              href: "/admin/akhir-bulan-akhir-tahun/proses-shu/perhitungan-shu",
+            },
+            {
+              id: "akhir-bulan-akhir-tahun/proses-shu/pembagian-shu",
+              label: "Pembagian SHU",
+              href: "/admin/akhir-bulan-akhir-tahun/proses-shu/pembagian-shu",
+            },
+            {
+              id: "akhir-bulan-akhir-tahun/proses-shu/laporan-shu",
+              label: "Laporan SHU",
+              href: "/admin/akhir-bulan-akhir-tahun/proses-shu/laporan-shu",
+            },
+          ]
         },
       ],
     },
@@ -202,6 +378,16 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           href: "/admin/master/kode-transaksi",
         },
         {
+          id: "master/produk-simpanan",
+          label: "Produk Simpanan",
+          href: "/admin/master/produk-simpanan",
+        },
+        {
+          id: "master/produk-pinjaman",
+          label: "Produk Pinjaman",
+          href: "/admin/master/produk-pinjaman",
+        },
+        {
           id: "konfigurasi/pengelola",
           label: "Pengelola",
           href: "/admin/pengelola",
@@ -213,235 +399,23 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         },
       ],
     },
-    {
-      id: "master",
-      label: "Master",
-      icon: <Database className="h-5 w-5" />,
-      href: "#",
-      children: [
-        {
-          id: "master/coa",
-          label: "COA",
-          href: "/admin/master/coas",
-        },
-        {
-          id: "master/kode-transaksi",
-          label: "Kode Transaksi",
-          href: "/admin/master/kode-transaksi",
-        },
-      ],
-    },
-
-    // --- Marketplace ---
-    {
-      id: "pemisah-marketplace",
-      label: "Marketplace",
-      isSeparator: true,
-      href: "#",
-    },
-    {
-      id: "dashboard-marketplace",
-      label: "Dashboard",
-      icon: <BookDashed className="h-5 w-5" />,
-      href: "/admin/dashboard-marketplace",
-    },
-    {
-      id: "seller",
-      label: "Seller",
-      icon: <UserCheck className="h-5 w-5" />,
-      href: "/admin/seller",
-    },
-    {
-      id: "product-marketplace",
-      label: "Produk",
-      icon: <Package className="h-5 w-5" />,
-      href: "/admin/product-list",
-    },
-    {
-      id: "transaction-marketplace",
-      label: "Transaksi",
-      icon: <ShoppingCart className="h-5 w-5" />,
-      href: "/admin/transaction",
-    },
-    {
-      id: "ppob",
-      label: "PPOB",
-      icon: <SmartphoneNfc className="h-5 w-5" />,
-      href: "#",
-      children: [
-        {
-          id: "ppob/transaksi",
-          label: "Transaksi",
-          href: "/admin/ppob/transaksi",
-        },
-        {
-          id: "ppob/deposit",
-          label: "Deposit Saldo",
-          href: "/admin/ppob/deposit",
-        },
-        {
-          id: "ppob/product",
-          label: "Produk PPOB",
-          href: "/admin/ppob/product",
-        },
-        {
-          id: "ppob/category",
-          label: "Kategori Produk PPOB",
-          href: "/admin/ppob/category",
-        },
-      ],
-    },
-    {
-      id: "stock-opname",
-      label: "Stock Opname",
-      icon: <Package className="h-5 w-5" />,
-      href: "/admin/stock-opname",
-    },
-    {
-      id: "pengadaan",
-      label: "Pengadaan",
-      icon: <Package className="h-5 w-5" />,
-      href: "/admin/pengadaan",
-    },
-    {
-      id: "pos-kasir",
-      label: "Pos Kasir",
-      icon: <CreditCard className="h-5 w-5" />,
-      href: "#",
-      children: [
-        {
-          id: "pos-kasir/kasir",
-          label: "Kasir",
-          href: "/admin/pos-kasir/kasir",
-        },
-        {
-          id: "pos-kasir/history",
-          label: "History",
-          href: "/admin/pos-kasir/history",
-        },
-      ],
-    },
-    {
-      id: "customer-marketplace",
-      label: "Data Customer",
-      icon: <BookUser className="h-5 w-5" />,
-      href: "/admin/customer",
-    },
-    {
-      id: "voucher",
-      label: "Voucher",
-      icon: <Tag className="h-5 w-5" />,
-      href: "/admin/voucher",
-    },
-    {
-      id: "master-marketplace",
-      label: "Master",
-      icon: <Database className="h-5 w-5" />,
-      href: "#",
-      children: [
-        {
-          id: "master-product-category-marketplace",
-          label: "Kategori Produk",
-          href: "/admin/product-category",
-        },
-        {
-          id: "master-product-merk-marketplace",
-          label: "Tipe Produk",
-          href: "/admin/product-merk",
-        },
-        {
-          id: "master-supplier-marketplace",
-          label: "Supplier",
-          href: "/admin/master/supplier",
-        },
-      ],
-    },
-    {
-      id: "profile-toko",
-      label: "Profile Toko",
-      icon: <Building className="h-5 w-5" />,
-      href: "/admin/profile-toko",
-    },
-
-    // --- Konten Website ---
-    {
-      id: "pemisah-konten-website",
-      label: "Konten Website",
-      isSeparator: true,
-      href: "#",
-    },
-    {
-      id: "home",
-      label: "Home",
-      icon: <Webhook className="h-5 w-5" />,
-      href: "/admin/home",
-    },
-    {
-      id: "tentang-kami",
-      label: "Tentang Kami",
-      icon: <FileStack className="h-5 w-5" />,
-      href: "/admin/tentang-kami",
-    },
-    {
-      id: "gallery",
-      label: "Galeri",
-      icon: <GalleryVertical className="h-5 w-5" />,
-      href: "/admin/gallery",
-    },
-    {
-      id: "news",
-      label: "Berita",
-      icon: <Newspaper className="h-5 w-5" />,
-      href: "/admin/news",
-    },
   ];
 
   // ============
   // Helpers filtering
   // ============
-  const byId = new Map<string, MenuItem>(
-    superadminMenuItems.map((i) => [i.id, i])
-  );
 
-  const cloneWithFilteredChildren = (
-    item: MenuItem,
-    excludeChildIds: Set<string>
-  ): MenuItem => {
-    const cloned: MenuItem = { ...item };
-    if (item.children && item.children.length) {
-      cloned.children = item.children.filter((c) => !excludeChildIds.has(c.id));
-    }
-    return cloned;
-  };
+  // Hapus Helper-Helper yang tidak digunakan: byId, cloneWithFilteredChildren, pickByInclude, MASTERISH_CHILD_IDS
+  // Sisakan filterByExclude yang masih digunakan
 
   const filterByExclude = (
-    excludeRootIds: Set<string>,
-    excludeChildIds: Set<string>
+    baseItems: MenuItem[],
+    excludeRootIds: Set<string>
   ): MenuItem[] => {
-    return superadminMenuItems
-      .filter((it) => !excludeRootIds.has(it.id))
-      .map((it) => cloneWithFilteredChildren(it, excludeChildIds));
+    return baseItems
+      .filter((it) => !excludeRootIds.has(it.id));
+      // Menghapus pemanggilan cloneWithFilteredChildren karena MASTERISH_CHILD_IDS tidak ada lagi
   };
-
-  const pickByInclude = (
-    includeRootIds: string[],
-    excludeChildIds: Set<string>
-  ): MenuItem[] => {
-    const result: MenuItem[] = [];
-    for (const id of includeRootIds) {
-      const base = byId.get(id);
-      if (!base) continue;
-      result.push(cloneWithFilteredChildren(base, excludeChildIds));
-    }
-    return result;
-  };
-
-  // Child "master-ish" yang harus disembunyikan untuk role tertentu
-  const MASTERISH_CHILD_IDS = new Set<string>([
-    "simpanan/kategori",
-    "pinjaman/kategori",
-    // tambahkan child lain yang kamu anggap master-ish bila perlu
-  ]);
 
   // ============
   // Role resolving
@@ -450,16 +424,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     (user?.roles ?? []).map((r) => r.name?.toLowerCase?.()) ?? [];
   const hasRole = (name: string) => roleNames.includes(name);
 
-  // Prioritas role (ambil yang paling kuat)
   let effectiveRole:
     | "superadmin"
     | "ketua"
     | "sekretaris"
     | "bendahara"
     | "staff"
-    | "anggota_seller"
-    | "anggota"
-    | "user"
     | "none" = "none";
 
   if (hasRole("superadmin")) effectiveRole = "superadmin";
@@ -467,10 +437,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   else if (hasRole("sekretaris")) effectiveRole = "sekretaris";
   else if (hasRole("bendahara")) effectiveRole = "bendahara";
   else if (hasRole("staff")) effectiveRole = "staff"; // Admin Input
-  else if (hasRole("anggota_seller")) effectiveRole = "anggota_seller";
-  else if (hasRole("anggota")) effectiveRole = "anggota";
-  else if (hasRole("user")) effectiveRole = "user";
-  else effectiveRole = user ? "user" : "none";
+  else effectiveRole = user ? "staff" : "none"; // Default user yang login adalah staff jika bukan role lain
 
   // ============
   // Build menu per role
@@ -483,74 +450,27 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       break;
     }
 
-    // Ketua / Sekretaris / Bendahara: semua akses kecuali master & konfigurasi
+    // Ketua / Sekretaris / Bendahara: semua akses kecuali konfigurasi (master tetap terlihat karena itu child di konfigurasi)
     case "ketua":
     case "sekretaris":
     case "bendahara": {
       const excludeRoot = new Set<string>([
         "konfigurasi",
-        "master",
-        "master-marketplace",
+        // Menghapus exclude Marketplace dan Master yang sudah dibuang dari daftar superadminMenuItems
       ]);
-      menuItems = filterByExclude(excludeRoot, MASTERISH_CHILD_IDS);
+      menuItems = filterByExclude(superadminMenuItems, excludeRoot);
       break;
     }
 
-    // Admin Input (staff): semua akses kecuali master/konfigurasi + tidak bisa lihat akuntansi & laporan
+    // Admin Input (staff): semua akses kecuali konfigurasi, akuntansi, dan akhir-bulan
     case "staff": {
       const excludeRoot = new Set<string>([
         "konfigurasi",
-        "master",
-        "master-marketplace",
         "akuntansi",
-        "laporan",
+        "akhir-bulan-akhir-tahun",
+        // Laporan tetap terlihat sesuai menu superadmin
       ]);
-      menuItems = filterByExclude(excludeRoot, MASTERISH_CHILD_IDS);
-      break;
-    }
-
-    // Anggota: semua akses koperasi (lihat data), tidak bisa lihat marketplace
-    case "anggota":
-    case "user": {
-      menuItems = pickByInclude(
-        [
-          "dashboard",
-          "anggota",
-          "simpanan",
-          "pinjaman",
-          "data-keuangan",
-          "anggota-meninggal",
-          "akuntansi",
-          "laporan",
-        ],
-        MASTERISH_CHILD_IDS
-      );
-      break;
-    }
-
-    // Anggota + Seller: koperasi (lihat data) + marketplace terbatas (toko sendiri)
-    case "anggota_seller": {
-      menuItems = pickByInclude(
-        [
-          // koperasi
-          "dashboard",
-          "anggota",
-          "simpanan",
-          "pinjaman",
-          "data-keuangan",
-          "anggota-meninggal",
-          "akuntansi",
-          "laporan",
-
-          // marketplace terbatas
-          "pemisah-marketplace",
-          "dashboard-marketplace",
-          "product-marketplace",
-          "transaction-marketplace",
-          "profile-toko",
-        ],
-        MASTERISH_CHILD_IDS
-      );
+      menuItems = filterByExclude(superadminMenuItems, excludeRoot);
       break;
     }
 
@@ -581,6 +501,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           <div className="py-2">
             <div className="max-w-7xl mx-auto px-2 sm:px-2 lg:px-2">
               <ClientAuthGuard
+                // Menjaga agar ClientAuthGuard tetap ada, namun memastikan rute yang benar
                 excludedRoutes={["/auth", "/auth/login", "/public", "/"]}
                 excludedFetchPrefixes={["/api/auth/", "/auth/"]}
                 loginPath="/auth/login"

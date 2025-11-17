@@ -5,6 +5,7 @@ export interface MenuItem {
   href: string;
   badge?: string;
   children?: MenuItem[];
+  sub_children?: MenuItem[];
   isSeparator?: boolean;
 }
 
