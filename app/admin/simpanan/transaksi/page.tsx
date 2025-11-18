@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -29,36 +29,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { formatRupiahWithRp } from "@/lib/format-utils";
+import { formatRupiah } from "@/lib/format-utils";
 
-import {
-  useGetWalletListQuery,
-  useCreatePenarikanSimpananMutation,
-} from "@/services/admin/penarikan-simpanan.service";
-
+import { useGetWalletListQuery } from "@/services/admin/penarikan-simpanan.service";
 import { useCreateSimpananMutation } from "@/services/admin/simpanan.service";
-
-import type {
-  Wallet,
-  CreatePenarikanSimpananRequest,
-} from "@/types/admin/penarikan-simpanan";
-import type { CreateSimpananRequest } from "@/types/admin/simpanan";
-
 import { FetchBaseQueryError } from "@reduxjs/toolkit/query";
+import type { Wallet } from "@/types/admin/penarikan-simpanan";
+import type { CreateSimpananRequest } from "@/types/admin/simpanan";
 
 /* Helper: parse nominal & format */
 const parseNominal = (value: string) => {
   const parsed = parseFloat(value.replace(/[^0-9]/g, ""));
   return isNaN(parsed) ? 0 : parsed;
 };
-const formatRupiah = (num: number) =>
-  new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(num);
 
-/* extract message from FetchBaseQueryError without using any */
 function extractMessageFromFetchBaseQueryError(
   fbq: FetchBaseQueryError
 ): string {
@@ -134,7 +118,6 @@ export default function TransaksiSimpananPage() {
       : null;
 
   // === Mutations ===
-  const [createPenarikan] = useCreatePenarikanSimpananMutation();
   const [createSimpanan] = useCreateSimpananMutation();
 
   const isSearching = walletFetching || walletLoading;
@@ -154,7 +137,7 @@ export default function TransaksiSimpananPage() {
   };
 
   // sync dataRekening from query result
-  React.useEffect(() => {
+  useEffect(() => {
     if (foundWallet) {
       setDataRekening(foundWallet);
       setSearchError(null);
@@ -178,135 +161,39 @@ export default function TransaksiSimpananPage() {
       return;
     }
 
-    // withdrawal rules
-    if (
-      transaksiType === "TARIK" &&
-      nominalTransaksi > (dataRekening.balance ?? 0)
-    ) {
-      await Swal.fire(
-        "Gagal",
-        "Saldo tidak mencukupi untuk penarikan ini.",
-        "error"
-      );
-      return;
-    }
+    const today = new Date().toISOString().split("T")[0]; // 'YYYY-MM-DD'
 
-    const prodName = (dataRekening.reference?.name ?? "").toLowerCase();
-    if (
-      transaksiType === "TARIK" &&
-      (prodName.includes("wajib") || prodName.includes("pokok"))
-    ) {
-      await Swal.fire(
-        "Ditolak",
-        `${
-          dataRekening.reference?.name ?? "Produk"
-        } biasanya tidak bisa ditarik.`,
-        "error"
-      );
-      return;
-    }
-
-    const actionText = transaksiType === "SETOR" ? "Setor" : "Tarik";
-    const newBalance =
-      transaksiType === "SETOR"
-        ? (dataRekening.balance ?? 0) + nominalTransaksi
-        : (dataRekening.balance ?? 0) - nominalTransaksi;
-
-    const confirm = await Swal.fire({
-      title: `Konfirmasi Transaksi ${actionText}`,
-      html: `<p class="text-left">Anggota: <b>${
-        dataRekening.user?.name ?? "-"
-      }</b></p>
-           <p class="text-left">Produk: <b>${
-             dataRekening.reference?.name ?? "-"
-           }</b></p>
-           <p class="text-left">Nominal: <b>${formatRupiah(
-             nominalTransaksi
-           )}</b></p>
-           <p class="text-left">Saldo Akhir: <b>${formatRupiah(
-             newBalance
-           )}</b></p>`,
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: `Proses ${actionText}`,
-    });
-
-    if (!confirm.isConfirmed) return;
-
-    setIsProcessing(true);
+    const payload: CreateSimpananRequest = {
+      simpanan_category_id: (dataRekening.reference?.id as number) ?? 0,
+      user_id: (dataRekening.user?.id as number) ?? 0,
+      description: keterangan || undefined,
+      date: today,
+      nominal: Number(nominalTransaksi),
+      type: "manual", // Jenis transaksi manual
+    };
 
     try {
-      if (transaksiType === "SETOR") {
-        // --- CREATE SIMPANAN (SETOR) ---
-        // Kirim payload lengkap dengan fallback fields supaya backend tidak menolak.
-        const today = new Date().toISOString().split("T")[0]; // 'YYYY-MM-DD'
+      // Memastikan kita menggunakan endpoint yang benar yaitu /simpanan
+      await createSimpanan(payload).unwrap();
 
-        // NOTE: CreateSimpananRequest membutuhkan simpanan_category_id & user_id (per tipe),
-        // jadi kita isi dari dataRekening jika ada, atau fallback ke 0 (sesuaikan jika backend mengharuskan nilai lain).
-        const payload: CreateSimpananRequest = {
-          simpanan_category_id: (dataRekening.reference?.id as number) ?? 0, // fallback 0 jika tidak ada
-          user_id: (dataRekening.user?.id as number) ?? 0,
-          description: keterangan || undefined,
-          date: today,
-          nominal: Number(nominalTransaksi),
-          type: "manual",
-        };
+      await Swal.fire(
+        "Berhasil",
+        `Setoran ${formatRupiah(nominalTransaksi)} berhasil.`,
+        "success"
+      );
 
-        // debug log supaya kamu bisa lihat payload sebelum request
-        console.log("createSimpanan payload:", payload);
+      // Pembaruan saldo secara optimistik
+      setDataRekening((prev) =>
+        prev
+          ? { ...prev, balance: (prev.balance ?? 0) + nominalTransaksi }
+          : prev
+      );
 
-        await createSimpanan(
-          payload as unknown as CreateSimpananRequest
-        ).unwrap();
-
-        await Swal.fire(
-          "Berhasil",
-          `Setoran ${formatRupiah(nominalTransaksi)} berhasil.`,
-          "success"
-        );
-
-        // optimistic update
-        setDataRekening((prev) =>
-          prev
-            ? { ...prev, balance: (prev.balance ?? 0) + nominalTransaksi }
-            : prev
-        );
-      } else {
-        // --- PENARIKAN (TARIK) ---
-        const withdrawalPayload: Partial<CreatePenarikanSimpananRequest> = {
-          wallet_id: dataRekening.id,
-          amount: String(nominalTransaksi),
-          description: keterangan || null,
-        };
-
-        if (typeof dataRekening.user?.id === "number") {
-          withdrawalPayload.user_id = dataRekening.user.id;
-        }
-
-        await createPenarikan(
-          withdrawalPayload as CreatePenarikanSimpananRequest
-        ).unwrap();
-
-        await Swal.fire(
-          "Berhasil",
-          `Penarikan ${formatRupiah(nominalTransaksi)} berhasil.`,
-          "success"
-        );
-
-        // optimistic update
-        setDataRekening((prev) =>
-          prev
-            ? { ...prev, balance: (prev.balance ?? 0) - nominalTransaksi }
-            : prev
-        );
-      }
-
-      // reset & refetch
+      // Reset input dan refetch data
       setNominalInput("");
       setKeterangan("");
       setRekeningNumber("");
       setSearchQuery("");
-      void refetchWallet();
     } catch (err) {
       console.error(err);
       if (typeof err === "object" && err !== null && "status" in err) {
