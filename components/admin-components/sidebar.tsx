@@ -11,21 +11,25 @@ import { Button } from "../ui/button";
 // ⬇️ Import service logout
 import { useLogoutMutation } from "@/services/auth.service";
 
-
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, menuItems }) => {
   const shopLogo = "/favicon.ico";
   const pathname = usePathname();
   const [openMenus, setOpenMenus] = useState<string[]>([]);
   // State untuk melacak menu level 2 yang terbuka (yang memiliki sub_children)
-  const [openSubMenus, setOpenSubMenus] = useState<string[]>([]); 
+  const [openSubMenus, setOpenSubMenus] = useState<string[]>([]);
 
   // ⬇️ Hook mutate logout
   const [logoutApi, { isLoading: isLoggingOut }] = useLogoutMutation();
 
-  const toggleMenu = (id: string, e: React.MouseEvent, level: 1 | 2) => {
+  // Gunakan generic HTMLElement agar bisa terima click dari <a> maupun <button>
+  const toggleMenu = (
+    id: string,
+    e: React.MouseEvent<HTMLElement>,
+    level: 1 | 2
+  ) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (level === 1) {
       setOpenMenus((prev) =>
         prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
@@ -59,9 +63,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, menuItems }) => {
   };
 
   // --- Fungsi Render Menu Level 2 ---
-  const renderChildMenu = (child: any) => { // Menggunakan 'any' karena tipe MenuItem Anda kompleks
-    const isChildActive = pathname === child.href;
-    const hasSubChildren = child.sub_children && child.sub_children.length > 0;
+  const renderChildMenu = (child: MenuItem) => {
+    const childHref = child.href ?? "#";
+    const isChildActive = pathname === childHref;
+    const hasSubChildren =
+      Array.isArray(child.sub_children) && child.sub_children.length > 0;
     const isSubMenuOpen = openSubMenus.includes(child.id);
 
     // Jika memiliki sub_children, kita buat div untuk menampung link + toggle
@@ -70,10 +76,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, menuItems }) => {
         <div key={child.id}>
           <div className="relative">
             <Link
-              href={child.href}
+              href={childHref}
               onClick={(e) => {
                 // Jangan navigasi, hanya buka/tutup sub_children
-                e.preventDefault(); 
+                e.preventDefault();
                 e.stopPropagation();
                 toggleMenu(child.id, e, 2);
               }}
@@ -86,9 +92,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, menuItems }) => {
               {child.label}
             </Link>
             <button
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 rounded hover:bg-gray-200 focus:outline-none"
-                aria-label={`Toggle ${child.label} submenu`}
-                onClick={(e) => toggleMenu(child.id, e, 2)}
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 rounded hover:bg-gray-200 focus:outline-none"
+              aria-label={`Toggle ${child.label} submenu`}
+              onClick={(e) =>
+                toggleMenu(child.id, e as React.MouseEvent<HTMLElement>, 2)
+              }
             >
               {isSubMenuOpen ? (
                 <ChevronUp className="h-3 w-3 text-gray-500" />
@@ -97,22 +105,23 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, menuItems }) => {
               )}
             </button>
           </div>
-          
+
           {/* Render Sub_Children (Level 3) */}
           {isSubMenuOpen && (
             <div className="ml-4 mt-1 space-y-1 border-l border-gray-300 pl-2">
-              {child.sub_children.map((subChild: any) => {
-                const isSubChildActive = pathname === subChild.href;
+              {child.sub_children!.map((subChild: MenuItem) => {
+                const subChildHref = subChild.href ?? "#";
+                const isSubChildActive = pathname === subChildHref;
                 return (
                   <Link
                     key={subChild.id}
-                    href={subChild.href}
+                    href={subChildHref}
                     className={`block px-2 py-1 rounded-md text-sm ${
                       isSubChildActive
                         ? "bg-gray-300 text-gray-900"
                         : "text-gray-600 hover:bg-gray-200 hover:text-gray-900"
                     }`}
-                    onClick={() => window.innerWidth < 1024 && onClose()}
+                    onClick={() => window.innerWidth < 1024 && onClose?.()}
                   >
                     {subChild.label}
                   </Link>
@@ -128,20 +137,19 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, menuItems }) => {
     return (
       <Link
         key={child.id}
-        href={child.href}
+        href={childHref}
         className={`block px-2 py-1 rounded-md text-sm ${
           isChildActive
             ? "bg-gray-200 text-gray-900"
             : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
         }`}
-        onClick={() => window.innerWidth < 1024 && onClose()}
+        onClick={() => window.innerWidth < 1024 && onClose?.()}
       >
         {child.label}
       </Link>
     );
   };
   // --- Akhir Fungsi Render Menu Level 2 ---
-
 
   return (
     <>
@@ -185,55 +193,74 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, menuItems }) => {
 
         <nav className="mt-5 px-2 space-y-1 overflow-y-auto h-[calc(100vh-12rem)] lg:h-[calc(100vh-11rem)]">
           {menuItems.map((item) => {
-            const isActive = pathname === item.href;
-            const hasChildren = item.children && item.children.length > 0;
+            const isActive = pathname === (item.href ?? "");
+            const hasChildren =
+              Array.isArray(item.children) && item.children.length > 0;
             const isMenuOpen = openMenus.includes(item.id);
             const isSeparator = item.isSeparator;
 
             return (
               <div key={item.id}>
                 {/* Level 1 Item / Separator */}
-                <div 
-                    className="relative" 
-                    // Hanya toggle jika ada children DAN bukan separator
-                    onClick={(e) => hasChildren && !isSeparator && toggleMenu(item.id, e, 1)}
+                <div
+                  className="relative"
+                  // Hanya toggle jika ada children DAN bukan separator
+                  onClick={(e) =>
+                    hasChildren &&
+                    !isSeparator &&
+                    toggleMenu(item.id, e as React.MouseEvent<HTMLElement>, 1)
+                  }
                 >
                   <Link
-                    href={item.href}
+                    href={item.href ?? "#"}
                     onClick={() => {
-                        // Tutup sidebar di mobile setelah klik Link, kecuali jika ada children
-                        if (window.innerWidth < 1024 && !hasChildren) {
-                            onClose();
-                        }
+                      // Tutup sidebar di mobile setelah klik Link, kecuali jika ada children
+                      if (
+                        typeof window !== "undefined" &&
+                        window.innerWidth < 1024 &&
+                        !hasChildren
+                      ) {
+                        onClose?.();
+                      }
                     }}
                     className={`w-full group flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md transition-colors duration-150 ${
                       isActive && !isSeparator
                         ? "bg-gray-200 text-gray-900"
                         : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
-                    } ${isSeparator ? 'cursor-default' : ''}`}
+                    } ${isSeparator ? "cursor-default" : ""}`}
                   >
                     <div
                       className={`flex items-center ${
-                      isSeparator ? "mt-3" : ""
+                        isSeparator ? "mt-3" : ""
                       }`}
                     >
                       {!isSeparator && (
-                      <div className="mr-3 flex-shrink-0 h-5 w-5">
-                        {item.icon}
-                      </div>
+                        <div className="mr-3 flex-shrink-0 h-5 w-5">
+                          {item.icon}
+                        </div>
                       )}
-                      <span className={isSeparator ? "font-bold text-gray-900 uppercase" : ""}>
-                      {item.label}
+                      <span
+                        className={
+                          isSeparator ? "font-bold text-gray-900 uppercase" : ""
+                        }
+                      >
+                        {item.label}
                       </span>
                     </div>
-                    
+
                     {/* Toggle Icon Level 1 */}
                     {hasChildren && !isSeparator && (
                       <button
                         className="p-1 rounded hover:bg-gray-200 focus:outline-none"
                         aria-label={`Toggle ${item.label} submenu`}
                         // Mencegah Link navigasi jika mengklik toggle
-                        onClick={(e) => toggleMenu(item.id, e, 1)}
+                        onClick={(e) =>
+                          toggleMenu(
+                            item.id,
+                            e as React.MouseEvent<HTMLElement>,
+                            1
+                          )
+                        }
                       >
                         {isMenuOpen ? (
                           <ChevronUp className="h-4 w-4 text-gray-500" />
@@ -248,7 +275,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, menuItems }) => {
                 {/* Children (Level 2) Container */}
                 {hasChildren && isMenuOpen && (
                   <div className="ml-4 mt-1 space-y-1 border-l border-gray-300 pl-2">
-                    {item.children?.map(renderChildMenu)}
+                    {item.children!.map(renderChildMenu)}
                   </div>
                 )}
               </div>

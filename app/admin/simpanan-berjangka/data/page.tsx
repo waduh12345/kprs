@@ -208,7 +208,6 @@ export default function SimpananBerjangkaPage() {
             onSearchChange={setQuery}
             showAddButton
             openModal={handleAdd}
-            
             // Konfigurasi Filter Status
             enableStatusFilter
             statusOptions={[
@@ -218,14 +217,12 @@ export default function SimpananBerjangkaPage() {
               { value: "Tutup", label: "Tutup" },
             ]}
             initialStatus={statusFilter}
-            onStatusChange={setStatusFilter} 
-            
+            onStatusChange={setStatusFilter}
             // Konfigurasi Export
             enableExport
             onExportExcel={handleExportExcel}
             exportLabel="Export Data"
             exportIcon={<FileDown className="h-4 w-4 mr-2" />}
-            
             // Nonaktifkan Import/Template
             showTemplateCsvButton={false}
             enableImport={false}
@@ -280,7 +277,7 @@ export default function SimpananBerjangkaPage() {
                                   <p>Tambah Modal/Top Up</p>
                                 </TooltipContent>
                               </Tooltip>
-                              
+
                               {/* History Transaksi */}
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -288,7 +285,9 @@ export default function SimpananBerjangkaPage() {
                                     size="sm"
                                     variant="outline"
                                     onClick={() =>
-                                      router.push(`/admin/simpanan-berjangka/transaksi-simjaka?rekening=${item.no_rekening}`)
+                                      router.push(
+                                        `/admin/simpanan-berjangka/transaksi-simjaka?rekening=${item.no_rekening}`
+                                      )
                                     }
                                   >
                                     <HistoryIcon className="size-4" />
@@ -302,19 +301,31 @@ export default function SimpananBerjangkaPage() {
                           }
                         />
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">{item.anggota_name}</td>
-                      <td className="px-4 py-3 whitespace-nowrap font-semibold">{item.no_rekening}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{item.produk}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {item.anggota_name}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap font-semibold">
+                        {item.no_rekening}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {item.produk}
+                      </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right font-mono">
                         {formatRupiah(item.nominal_awal)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-primary">
                         {formatRupiah(item.nominal_sekarang)}
                       </td>
-                      <td className="px-4 py-3 text-center">{item.jangka_waktu}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{item.tanggal_mulai}</td>
+                      <td className="px-4 py-3 text-center">
+                        {item.jangka_waktu}
+                      </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <Badge variant={statusVariant(item.status)}>{item.status}</Badge>
+                        {item.tanggal_mulai}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <Badge variant={statusVariant(item.status)}>
+                          {item.status}
+                        </Badge>
                       </td>
                     </tr>
                   ))
@@ -324,10 +335,12 @@ export default function SimpananBerjangkaPage() {
           </div>
         </CardContent>
       </Card>
-      
+
       {/* Catatan: Karena menggunakan data dummy, pagination dihilangkan */}
       <p className="text-xs text-gray-500 mt-4">
+        {`
         *Data di atas bersifat dummy dan tidak terhubung ke API. Nominal Saat Ini dapat berubah setelah menggunakan fitur "Tambah Modal".
+        `}
       </p>
     </div>
   );

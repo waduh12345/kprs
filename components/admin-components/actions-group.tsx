@@ -1,3 +1,6 @@
+"use client";
+
+import React from "react";
 import {
   Tooltip,
   TooltipContent,
@@ -10,21 +13,36 @@ import { Eye, Edit, Trash2 } from "lucide-react";
 interface ActionsGroupProps {
   handleDetail?: () => void;
   handleEdit?: () => void;
-  handleDelete?: () => void;
+  handleDelete?: () => Promise<void> | void;
   additionalActions?: React.ReactNode;
+  showDetail?: boolean;
 }
 
-const ActionsGroup = ({
+const ActionsGroup: React.FC<ActionsGroupProps> = ({
   handleDetail,
   handleEdit,
   handleDelete,
   additionalActions,
-}: ActionsGroupProps) => {
+  showDetail = true,
+}) => {
+  const onHandleDelete = () => {
+    try {
+      const res = handleDelete?.();
+      if (res && typeof (res as Promise<void>).then === "function") {
+        (res as Promise<void>).catch(() => {
+          /* swallow error */
+        });
+      }
+    } catch {
+      /* swallow */
+    }
+  };
+
   return (
     <TooltipProvider>
       <div className="flex items-center gap-1.5">
         {/* Basic Actions */}
-        {handleDetail && (
+        {showDetail && handleDetail && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -32,6 +50,7 @@ const ActionsGroup = ({
                 variant="outline"
                 onClick={handleDetail}
                 className="text-blue-400 border-blue-400 hover:text-blue-400 hover:bg-blue-50"
+                aria-label="Detail"
               >
                 <Eye className="size-4" />
               </Button>
@@ -50,6 +69,7 @@ const ActionsGroup = ({
                 variant="outline"
                 onClick={handleEdit}
                 className="text-yellow-400 border-yellow-400 hover:text-yellow-400 hover:bg-yellow-50"
+                aria-label="Edit"
               >
                 <Edit className="size-4" />
               </Button>
@@ -63,7 +83,12 @@ const ActionsGroup = ({
         {handleDelete && (
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" variant="destructive" onClick={handleDelete}>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={onHandleDelete}
+                aria-label="Hapus"
+              >
                 <Trash2 className="size-4" />
               </Button>
             </TooltipTrigger>

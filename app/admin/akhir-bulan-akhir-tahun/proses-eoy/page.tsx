@@ -15,11 +15,11 @@ import {
   Lock,
   Sunrise,
   BookOpen,
-  Badge,
   ListChecks,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 
 // --- DUMMY DATA & TYPES ---
 
@@ -153,7 +153,8 @@ export default function ProsesEOYPage() {
             <Lock className="h-5 w-5" /> Penutupan Buku Permanen
           </CardTitle>
           <p className="text-sm text-gray-500">
-            Pilih tahun yang akan ditutup. Proses ini wajib dijalankan sekali setahun.
+            Pilih tahun yang akan ditutup. Proses ini wajib dijalankan sekali
+            setahun.
           </p>
         </CardHeader>
         <CardContent className="grid md:grid-cols-4 gap-4 items-end">
@@ -165,7 +166,9 @@ export default function ProsesEOYPage() {
               min={2020}
               max={currentYear}
               value={tahunTutup}
-              onChange={(e) => setTahunTutup(parseInt(e.target.value) || currentYear)}
+              onChange={(e) =>
+                setTahunTutup(parseInt(e.target.value) || currentYear)
+              }
               disabled={isProcessing}
             />
           </div>
@@ -173,7 +176,9 @@ export default function ProsesEOYPage() {
             <Button
               onClick={handleRunEOY}
               disabled={!canProceed || isProcessing}
-              className={`w-full text-lg h-10 ${canProceed ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400'}`}
+              className={`w-full text-lg h-10 ${
+                canProceed ? "bg-red-600 hover:bg-red-700" : "bg-gray-400"
+              }`}
             >
               {isProcessing ? (
                 <>
@@ -201,26 +206,44 @@ export default function ProsesEOYPage() {
         <CardContent>
           <div className="space-y-3">
             <div className="p-3 border rounded-md bg-yellow-50 flex justify-between items-center">
-                <span className="font-medium text-yellow-800">Laba (Rugi) Bersih Tahun {tahunTutup}</span>
-                <span className={`font-bold text-2xl ${validation.laba_rugi_bersih < 0 ? 'text-red-700' : 'text-primary'}`}>
-                    {formatRupiah(validation.laba_rugi_bersih)}
-                </span>
+              <span className="font-medium text-yellow-800">
+                Laba (Rugi) Bersih Tahun {tahunTutup}
+              </span>
+              <span
+                className={`font-bold text-2xl ${
+                  validation.laba_rugi_bersih < 0
+                    ? "text-red-700"
+                    : "text-primary"
+                }`}
+              >
+                {formatRupiah(validation.laba_rugi_bersih)}
+              </span>
             </div>
-            <Separator className="my-3"/>
+            <Separator label={""} />
             <div className="flex justify-between items-center p-2 border rounded-md">
-              <span className="font-medium">Prasyarat: EOM Bulan Desember Selesai</span>
+              <span className="font-medium">
+                Prasyarat: EOM Bulan Desember Selesai
+              </span>
               {validation.prasyarat_eom_desember === "OK" ? (
-                <Badge variant="success" className="flex items-center gap-1"><CheckCircle className="h-4 w-4"/> OK</Badge>
+                <Badge variant="success" className="flex items-center gap-1">
+                  <CheckCircle className="h-4 w-4" /> OK
+                </Badge>
               ) : (
-                <Badge variant="destructive" className="flex items-center gap-1"><AlertTriangle className="h-4 w-4"/> Pending</Badge>
+                <Badge
+                  variant="destructive"
+                  className="flex items-center gap-1"
+                >
+                  <AlertTriangle className="h-4 w-4" /> Pending
+                </Badge>
               )}
             </div>
           </div>
         </CardContent>
         {!canProceed && (
-            <CardFooter className="bg-red-50 text-red-700 font-semibold flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5"/> EOY TIDAK DAPAT DIJALANKAN. Pastikan EOM Desember sudah selesai.
-            </CardFooter>
+          <CardFooter className="bg-red-50 text-red-700 font-semibold flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5" /> EOY TIDAK DAPAT DIJALANKAN.
+            Pastikan EOM Desember sudah selesai.
+          </CardFooter>
         )}
       </Card>
 
@@ -260,9 +283,10 @@ export default function ProsesEOYPage() {
           </table>
         </CardContent>
       </Card>
-      
+
       <p className="text-xs text-gray-500 mt-4">
-        *Proses ini adalah penutupan akuntansi final untuk tahun fiskal yang bersangkutan.
+        *Proses ini adalah penutupan akuntansi final untuk tahun fiskal yang
+        bersangkutan.
       </p>
     </div>
   );

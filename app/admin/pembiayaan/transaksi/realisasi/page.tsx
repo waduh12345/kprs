@@ -99,7 +99,7 @@ export default function RealisasiPembiayaanPage() {
 
   // Filter hanya yang statusnya "Disetujui" (Siap Realisasi)
   const listSiapRealisasi = useMemo(() => {
-    let arr = dataRealisasi.filter(d => d.status === "Disetujui");
+    const arr = dataRealisasi.filter(d => d.status === "Disetujui");
     
     // Filter Query Pencarian
     if (!query.trim()) return arr;
@@ -163,16 +163,15 @@ export default function RealisasiPembiayaanPage() {
     
     // Simulasi pemrosesan API
     setTimeout(() => {
-      setDataRealisasi((prev) => 
-        prev.map((d) => 
-          d.id === item.id 
-            ? { ...d, status: "Realisasi" } 
-            : d
-        ).concat(
-            // Tambahkan entri log/transaksi realisasi di tempat lain (diimplementasi nyata)
-            [] 
+      setDataRealisasi((prev) =>
+        prev.map(
+          (d): PengajuanPembiayaan =>
+            d.id === item.id
+              ? { ...d, status: "Realisasi" }
+              : d
         )
       );
+
       
       setIsProcessing(false);
       Swal.fire({

@@ -14,10 +14,10 @@ import {
   AlertTriangle,
   XCircle,
   Calendar,
-  Badge,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 
 // --- DUMMY DATA & TYPES ---
 

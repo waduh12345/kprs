@@ -78,6 +78,7 @@ type Props = {
 
   /** ===== Button tambah (opsional) ===== */
   addButtonLabel?: string;
+  showAddButton?: boolean;
 
   /** ===== Excel actions (opsional) ===== */
   onImportExcel?: (file: File) => void;
@@ -87,10 +88,19 @@ type Props = {
   exportLabel?: string;
   exportDisabled?: boolean;
 
+  /** ===== Export UI toggle (opsional) ===== */
+  enableExport?: boolean;
+  exportIcon?: ReactNode;
+
+  /** ===== Import UI toggle (opsional) ===== */
+  enableImport?: boolean;
+
   /** ===== Template CSV (opsional) ===== */
   showTemplateCsvButton?: boolean;
   templateCsvUrl?: string;
   templateCsvLabel?: string;
+
+  statusFilterLabel?: string;
 
   /** ===== Date filter (opsional) ===== */
   enableDateFilter?: boolean;
@@ -138,11 +148,13 @@ export function ProdukToolbar({
   onSupplierChange,
   isSupplierLoading,
   onSupplierSearchChange,
+  statusFilterLabel,
 
   // extras
   extraSelects = [],
   extraNodes,
   addButtonLabel = "Data",
+  showAddButton = true,
 
   // excel
   onImportExcel,
@@ -151,6 +163,12 @@ export function ProdukToolbar({
   importLabel = "Import Excel",
   exportLabel = "Export Excel",
   exportDisabled,
+
+  // export/import toggles
+  enableExport = false,
+  exportIcon,
+
+  enableImport = true,
 
   // template csv (opsional)
   showTemplateCsvButton = false,
@@ -274,6 +292,33 @@ export function ProdukToolbar({
             </div>
           )}
 
+          {enableStatusFilter && statusFilterLabel && (
+            <span className="text-xs font-semibold text-gray-600">
+              {statusFilterLabel}
+            </span>
+          )}
+
+          {enableStatusFilter && (
+            <Select
+              value={status}
+              onValueChange={(val) => {
+                setStatus(val);
+                onStatusChange?.(val);
+              }}
+            >
+              <SelectTrigger className="h-12 py-3 w-full sm:w-56">
+                <SelectValue placeholder="Pilih status" />
+              </SelectTrigger>
+              <SelectContent>
+                {statusOptions.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           {/* Extra selects (opsional) */}
           {extraSelects.map((s) => {
             const currentVal =
@@ -376,7 +421,8 @@ export function ProdukToolbar({
             </a>
           )}
 
-          {onImportExcel && (
+          {/* Import */}
+          {enableImport && onImportExcel && (
             <>
               <input
                 ref={fileInputRef}
@@ -401,17 +447,20 @@ export function ProdukToolbar({
             </>
           )}
 
-          {onExportExcel && (
+          {/* Export */}
+          {enableExport && onExportExcel && (
             <Button
               className="h-10"
               onClick={onExportExcel}
               disabled={exportDisabled}
             >
+              {exportIcon}
               {exportLabel}
             </Button>
           )}
 
-          {openModal && (
+          {/* Hanya render tombol Add jika openModal ada dan showAddButton true */}
+          {openModal && showAddButton && (
             <Button
               onClick={openModal}
               className="inline-flex items-center gap-2 h-10"

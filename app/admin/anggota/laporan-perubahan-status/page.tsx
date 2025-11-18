@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useGetAnggotaListQuery } from "@/services/koperasi-service/anggota.service";
-import type { AnggotaKoperasi } from "@/types/koperasi-types/anggota"; // Catatan: Kita mengasumsikan API ini masih digunakan
+import type { AnggotaKoperasi, DocumentsAnggota } from "@/types/koperasi-types/anggota"; // Catatan: Kita mengasumsikan API ini masih digunakan
 import { Badge } from "@/components/ui/badge";
 import { ProdukToolbar } from "@/components/ui/produk-toolbar";
 import { useRouter } from "next/navigation";
@@ -14,30 +14,104 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { HistoryIcon, LandmarkIcon, FileDown } from "lucide-react";
+import { HistoryIcon, FileDown } from "lucide-react";
 
 // Karena data riwayat status biasanya berbeda, kita membuat tipe data simulasi.
-// Dalam implementasi nyata, Anda akan mengambil data dari endpoint /anggota/laporan-perubahan-status
+// Interface ini mewarisi tipe data dari AnggotaKoperasi
 interface StatusChangeReportItem extends AnggotaKoperasi {
-    previous_status: number;
-    changed_at: string;
+  previous_status: number;
+  changed_at: string;
 }
 
 // Data Dummy untuk mensimulasikan riwayat perubahan status
 const dummyStatusHistory: StatusChangeReportItem[] = [
-    {
-        id: "1", reference: "A001", name: "Budi Santoso", email: "budi@mail.com", phone: "0812...", gender: "Laki-laki", status: 1, // Status Sekarang
-        previous_status: 0, changed_at: "2024-10-01", user_id: "u1", address: "Jl. Mawar", nik: "123", npwp: "123",
-    },
-    {
-        id: "2", reference: "A002", name: "Siti Rahayu", email: "siti@mail.com", phone: "0813...", gender: "Perempuan", status: 2,
-        previous_status: 1, changed_at: "2024-10-15", user_id: "u2", address: "Jl. Anggrek", nik: "456", npwp: "456",
-    },
-    {
-        id: "3", reference: "A003", name: "Joko Widodo", email: "joko@mail.com", phone: "0811...", gender: "Laki-laki", status: 1,
-        previous_status: 0, changed_at: "2024-09-20", user_id: "u3", address: "Jl. Melati", nik: "789", npwp: "789",
-    },
-    // Tambahkan lebih banyak data dummy yang relevan
+  {
+    id: 1,
+    user_id: 1,
+    reference: "A001",
+    ref_number: 1,
+    name: "Budi Santoso",
+    email: "budi@mail.com",
+    phone: "0812...",
+    gender: "Laki-laki",
+    address: "Jl. Mawar",
+    nik: "123",
+    npwp: "123",
+
+    birth_date: "1990-01-01",
+    birth_place: "Jakarta",
+
+    status: 1,
+    created_at: "2024-01-01",
+    updated_at: "2024-01-02",
+
+    nip: null,
+    unit_kerja: null,
+    jabatan: null,
+
+    documents: [] as DocumentsAnggota[],
+
+    previous_status: 0,
+    changed_at: "2024-10-01",
+  },
+  {
+    id: 2,
+    user_id: 2,
+    reference: "A002",
+    ref_number: 1,
+    name: "Siti Rahayu",
+    email: "siti@mail.com",
+    phone: "0813...",
+    gender: "Perempuan",
+    address: "Jl. Anggrek",
+    nik: "456",
+    npwp: "456",
+
+    birth_date: "1995-05-15",
+    birth_place: "Bandung",
+
+    status: 2,
+    created_at: "2024-01-05",
+    updated_at: "2024-01-10",
+
+    nip: null,
+    unit_kerja: null,
+    jabatan: null,
+
+    documents: [] as DocumentsAnggota[],
+
+    previous_status: 1,
+    changed_at: "2024-10-15",
+  },
+  {
+    id: 3,
+    user_id: 3,
+    reference: "A003",
+    ref_number: 1,
+    name: "Joko Widodo",
+    email: "joko@mail.com",
+    phone: "0811...",
+    gender: "Laki-laki",
+    address: "Jl. Melati",
+    nik: "789",
+    npwp: "789",
+
+    birth_date: "1988-11-20",
+    birth_place: "Surabaya",
+
+    status: 1,
+    created_at: "2024-01-03",
+    updated_at: "2024-01-04",
+
+    nip: null,
+    unit_kerja: null,
+    jabatan: null,
+
+    documents: [] as DocumentsAnggota[],
+
+    previous_status: 0,
+    changed_at: "2024-09-20",
+  },
 ];
 
 
@@ -48,12 +122,11 @@ export default function LaporanPerubahanStatusPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [query, setQuery] = useState("");
   // Tidak ada filter status di sini, tetapi kita bisa menambahkan filter tanggal
-  const [dateRange, setDateRange] = useState({ start: "", end: "" }); 
-  
+  const [dateRange, setDateRange] = useState({ start: "", end: "" });
+
   const [isExporting, setIsExporting] = useState(false);
 
   // Catatan: Di implementasi nyata, Anda akan menggunakan endpoint API yang benar
-  // Contoh: const { data, isLoading } = useGetStatusChangeHistoryQuery({ ... });
   const { isLoading: isLoadingData } = useGetAnggotaListQuery(
     {
       page: currentPage,
@@ -67,36 +140,32 @@ export default function LaporanPerubahanStatusPage() {
   );
 
   // Menggunakan data dummy karena tidak ada endpoint khusus riwayat status
-  const list: StatusChangeReportItem[] = dummyStatusHistory; 
+  const list: StatusChangeReportItem[] = dummyStatusHistory;
   const lastPage = 1; // Sesuaikan dengan pagination dummy
 
   const filteredList = useMemo(() => {
-    let arr = list;
-    
-    // Logika filter tanggal (placeholder, karena data asli tidak ada)
-    // if (dateRange.start && dateRange.end) {
-    //   arr = arr.filter(it => it.changed_at >= dateRange.start && it.changed_at <= dateRange.end);
-    // }
-      
+    // PERBAIKAN: Mengganti 'let arr' menjadi 'const arr'
+    const arr = list;
+
     // Filter berdasarkan Query Pencarian
     if (!query.trim()) return arr;
     const q = query.toLowerCase();
     return arr.filter((it) =>
-      [it.name, it.email, it.phone, it.reference].some(
-        (f) => f?.toLowerCase?.().includes?.(q)
+      // Menggunakan String(it.id) agar id (yang sekarang number) bisa dicari
+      [String(it.id), it.name, it.email, it.phone, it.reference].some((f) =>
+        f?.toLowerCase?.().includes?.(q)
       )
     );
   }, [list, query, dateRange]);
-
 
   const handleExportExcel = () => {
     setIsExporting(true);
     // TODO: Implementasi logika pemanggilan API Export Laporan Perubahan Status
     console.log("Mengekspor Laporan Perubahan Status...");
-    
+
     setTimeout(() => {
-        setIsExporting(false);
-        alert("Permintaan export laporan perubahan status telah diproses.");
+      setIsExporting(false);
+      alert("Permintaan export laporan perubahan status telah diproses.");
     }, 1500);
   };
 
@@ -108,19 +177,18 @@ export default function LaporanPerubahanStatusPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <h2 className="text-2xl font-bold mb-4">Laporan Perubahan Status Anggota</h2>
-      
+      <h2 className="text-2xl font-bold mb-4">
+        Laporan Perubahan Status Anggota
+      </h2>
+
       <ProdukToolbar
         onSearchChange={(q: string) => setQuery(q)}
-        
         // Nonaktifkan filter status yang lama
         enableStatusFilter={false}
-        
         // Hapus tombol Add/Import/Template
         showAddButton={false}
         showTemplateCsvButton={false}
         enableImport={false}
-
         // Tambahkan tombol Export
         onExportExcel={handleExportExcel}
         exportLabel={isExporting ? "Memproses..." : "Export Laporan"}
@@ -164,9 +232,10 @@ export default function LaporanPerubahanStatusPage() {
                             `/admin/anggota/add-data?mode=detail&id=${item.id}`
                           )
                         }
-                        showEdit={false}
-                        showDelete={false}
-                        
+                        // Hapus showEdit/showDelete jika ActionsGroup tidak menerimanya secara eksplisit
+                        // atau untuk menjaga agar hanya tombol detail/history yang muncul
+                        // showEdit={false}
+                        // showDelete={false}
                         additionalActions={
                           <div className="flex items-center gap-2">
                             {/* History Anggota */}
@@ -177,7 +246,7 @@ export default function LaporanPerubahanStatusPage() {
                                   variant="outline"
                                   onClick={() =>
                                     router.push(
-                                      `/admin/anggota/history?anggota_id=${item.id}` 
+                                      `/admin/anggota/history?anggota_id=${item.id}`
                                     )
                                   }
                                 >

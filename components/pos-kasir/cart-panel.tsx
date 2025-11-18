@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ShoppingCart, Minus, Plus, Trash2 } from "lucide-react";
-import type { CartItem } from "@/app/admin/pos-kasir/kasir/page";
+import type { CartItem } from "@/hooks/use-cart";
 
 export default function CartPanel(props: {
   cartItems: CartItem[];

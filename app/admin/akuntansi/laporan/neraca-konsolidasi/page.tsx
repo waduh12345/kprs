@@ -138,7 +138,7 @@ export default function LaporanNeracaKonsolidasiPage() {
           if (item.level === 1) return sum; // Skip level 1 headers
           
           // Dapatkan saldo konsolidasi
-          let saldo = item.parentSaldo + item.subsidiarySaldo - item.eliminasi;
+          const saldo = item.parentSaldo + item.subsidiarySaldo - item.eliminasi;
 
           // Dalam neraca, item Aset, Liabilitas, Ekuitas memiliki saldo yang berbeda
           // Dalam contoh ini, kita asumsikan Neraca Konsolidasi sudah di-setup per akun.
