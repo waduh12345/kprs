@@ -20,6 +20,7 @@ export interface Simpanan {
   simpanan_category_id: number;
   user_id: number;
   reference: string;
+  excel_path: string;
   ref_number: 1;
   order_id: string;
   description: string;

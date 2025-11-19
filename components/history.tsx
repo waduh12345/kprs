@@ -9,7 +9,7 @@ import { displayDate } from "@/lib/format-utils";
 import QRCode from "react-qr-code";
 
 import { useGetAnggotaByIdQuery } from "@/services/koperasi-service/anggota.service";
-import { useGetSimpananListQuery } from "@/services/admin/simpanan.service";
+import { useGetSimpananListQuery } from "@/services/admin/simpanan/simpanan.service";
 import { useGetPinjamanListQuery } from "@/services/admin/pinjaman.service";
 import { useGetTransactionListQuery } from "@/services/admin/transaction.service";
 

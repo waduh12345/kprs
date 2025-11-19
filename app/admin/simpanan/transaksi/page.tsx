@@ -32,7 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatRupiah } from "@/lib/format-utils";
 
 import { useGetWalletListQuery } from "@/services/admin/penarikan-simpanan.service";
-import { useCreateSimpananMutation } from "@/services/admin/simpanan.service";
+import { useCreateSimpananMutation } from "@/services/admin/simpanan/simpanan.service";
 import { FetchBaseQueryError } from "@reduxjs/toolkit/query";
 import type { Wallet } from "@/types/admin/penarikan-simpanan";
 import type { CreateSimpananRequest } from "@/types/admin/simpanan";

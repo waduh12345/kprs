@@ -1,4 +1,4 @@
-import { apiSlice } from "../base-query";
+import { apiSlice } from "../../base-query";
 import {
   Simpanan,
   SimpananResponse,
