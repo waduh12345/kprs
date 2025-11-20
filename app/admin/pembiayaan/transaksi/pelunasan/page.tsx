@@ -1,79 +1,77 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Search,
   DollarSign,
   User,
-  Zap,
-  Calendar,
   CreditCard,
-  AlertTriangle,
-  Loader2,
   CheckCircle,
-  FileText,
+  Loader2,
+  Info,
+  List,
+  Calendar,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { Separator } from "@/components/ui/separator";
+import {
+  useGetPinjamanListQuery,
+  useGetPinjamanDetailsQuery,
+  useCreatePaymentHistoryMutation,
+  useUpdatePaymentStatusMutation,
+  useBulkSettlementMutation,
+} from "@/services/admin/pinjaman.service";
 
-// --- DUMMY DATA & TYPES ---
-
-interface PinjamanAktif {
-  no_kontrak: string;
-  anggota_name: string;
-  produk: string;
-  nominal_pinjaman: number;
-  sisa_pokok: number;
-  tenor_total: number;
-  tenor_sisa: number;
-  jasa_bulanan: number; // Jasa/bunga flat per bulan
-  status: "Aktif" | "Telat" | "Lunas";
+// --- TYPES (SAMA SEPERTI SEBELUMNYA) ---
+interface PinjamanUser {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
 }
 
-const initialDummyData: PinjamanAktif[] = [
-  {
-    no_kontrak: "PJN/M/001",
-    anggota_name: "Budi Santoso",
-    produk: "Pembiayaan Mikro",
-    nominal_pinjaman: 15000000,
-    sisa_pokok: 10000000,
-    tenor_total: 12,
-    tenor_sisa: 8,
-    jasa_bulanan: 200000,
-    status: "Aktif",
-  },
-  {
-    no_kontrak: "PJN/I/002",
-    anggota_name: "Siti Rahayu",
-    produk: "Pembiayaan Investasi",
-    nominal_pinjaman: 50000000,
-    sisa_pokok: 40000000,
-    tenor_total: 24,
-    tenor_sisa: 20,
-    jasa_bulanan: 500000,
-    status: "Aktif",
-  },
-  {
-    no_kontrak: "PJN/M/003",
-    anggota_name: "Joko Widodo",
-    produk: "Pembiayaan Mikro",
-    nominal_pinjaman: 10000000,
-    sisa_pokok: 5000000,
-    tenor_total: 10,
-    tenor_sisa: 5,
-    jasa_bulanan: 200000,
-    status: "Telat", // Anggota yang telat bayar tetap bisa melunasi
-  },
-];
+interface PinjamanCategory {
+  id: number;
+  code: string;
+  name: string;
+}
+
+interface PinjamanInstallment {
+  id: number;
+  pinjaman_id: number;
+  month: number;
+  paid: number;
+  remaining: number;
+  due_date: string;
+  paid_at: string | null;
+  description: string;
+  status: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface PinjamanDetail {
+  id: number;
+  reference: string;
+  user_id: number;
+  nominal: number;
+  tenor: number;
+  status: number;
+  monthly_principal: number;
+  monthly_interest: number;
+  monthly_installment: number;
+  user: PinjamanUser;
+  category: PinjamanCategory;
+  details: PinjamanInstallment[];
+}
 
 // --- HELPER FUNCTIONS ---
-
 const formatRupiah = (number: number) => {
-  if (isNaN(number) || number === null || number === undefined) return 'Rp 0';
+  if (isNaN(number) || number === null || number === undefined) return "Rp 0";
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
@@ -81,141 +79,164 @@ const formatRupiah = (number: number) => {
   }).format(number);
 };
 
-/**
- * Simulasi Perhitungan Pelunasan Akselerasi (Flat Rate)
- * Tagihan Pelunasan = Sisa Pokok + Jasa/Bunga Bulan Berjalan + (Biaya Administrasi/Denda jika ada)
- * Discount Jasa = Total Sisa Jasa - (Jasa Bulan Berjalan + Penalti)
- */
-const hitungPelunasan = (pinjaman: PinjamanAktif) => {
-    // 1. Hitung Sisa Jasa/Bunga Belum Dibayar
-    const sisaTotalJasa = pinjaman.tenor_sisa * pinjaman.jasa_bulanan;
-    
-    // 2. Tentukan Jasa/Bunga yang Tetap Ditagih (Misal, Jasa bulan berjalan + Penalti 1 bulan)
-    const jasaYangDitagih = pinjaman.jasa_bulanan * 1; // Misal, hanya tagih 1 bulan jasa sebagai penalti/biaya administrasi
-    
-    // 3. Hitung Diskon Jasa (Sisa Jasa yang hangus)
-    const diskonJasa = sisaTotalJasa - jasaYangDitagih;
-    
-    // 4. Hitung Total Tagihan Pelunasan
-    const totalTagihanPelunasan = pinjaman.sisa_pokok + jasaYangDitagih;
-    
-    return {
-        sisaTotalJasa,
-        jasaYangDitagih,
-        diskonJasa: Math.max(0, diskonJasa), // Pastikan diskon tidak negatif
-        totalTagihanPelunasan,
-    };
-}
-
+const formatDate = (dateString: string) => {
+  if (!dateString) return "-";
+  return new Date(dateString).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+};
 
 // --- KOMPONEN UTAMA ---
 
 export default function PelunasanPembiayaanPage() {
   const [contractNumber, setContractNumber] = useState("");
-  const [dataPinjaman, setDataPinjaman] = useState<PinjamanAktif | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  const hasilPelunasan = useMemo(() => {
-    if (!dataPinjaman) return null;
-    return hitungPelunasan(dataPinjaman);
-  }, [dataPinjaman]);
+  // 1. QUERY LIST
+  const { data: listData, isFetching: isListFetching } = useGetPinjamanListQuery(
+    { 
+      page: 1, 
+      paginate: 1, 
+      searchBySpecific: "reference", 
+      search: searchQuery, 
+      status: "3" // Status Aktif/Realisasi
+    },
+    { skip: searchQuery === "" }
+  );
 
+  // 2. QUERY DETAIL
+  const { 
+    data: detailResponse, 
+    isFetching: isDetailFetching, 
+    refetch: refetchDetail 
+  } = useGetPinjamanDetailsQuery(
+    selectedId as number,
+    { skip: selectedId === null }
+  );
 
-  // --- HANDLER PENCARIAN ---
+  // 3. MUTATIONS
+
+  const [bulkSettlement] = useBulkSettlementMutation();
+
+  const pinjamanDetail = (detailResponse as PinjamanDetail) || null;
+
+  // --- EFFECT SEARCH ---
+  useEffect(() => {
+    if (!isListFetching && searchQuery !== "") {
+      const foundItem = listData?.data?.[0];
+      if (foundItem && foundItem.reference.toLowerCase().includes(searchQuery.toLowerCase())) {
+        setSelectedId(foundItem.id);
+        setSearchError(null);
+      } else {
+        setSelectedId(null);
+        setSearchError(`Nomor Kontrak "${contractNumber}" tidak ditemukan.`);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listData, isListFetching]);
+
+  // --- LOGIKA PELUNASAN (Hitung Total Sisa) ---
+  const pelunasanInfo = useMemo(() => {
+    if (!pinjamanDetail || !pinjamanDetail.details) return null;
+
+    // Ambil semua angsuran yang belum lunas
+    const unpaidInstallments = pinjamanDetail.details.filter((d) => d.status === false);
+    
+    // Hitung total nominal yang harus dilunasi
+    const totalAmount = unpaidInstallments.reduce((acc, curr) => acc + curr.remaining, 0);
+    
+    const remainingMonths = unpaidInstallments.length;
+
+    return {
+        unpaidInstallments,
+        totalAmount,
+        remainingMonths
+    };
+  }, [pinjamanDetail]);
+
+  // --- HANDLERS ---
+
   const handleSearch = () => {
     if (!contractNumber.trim()) {
       setSearchError("Masukkan Nomor Kontrak Pembiayaan.");
-      setDataPinjaman(null);
       return;
     }
-    
-    setIsSearching(true);
     setSearchError(null);
-    setDataPinjaman(null);
-
-    // Simulasi pencarian API
-    setTimeout(() => {
-      const found = initialDummyData.find(d => d.no_kontrak === contractNumber.trim());
-      
-      if (found) {
-        if (found.status === 'Lunas') {
-            setSearchError(`Kontrak ${contractNumber} sudah lunas.`);
-            setDataPinjaman(null);
-        } else {
-            setDataPinjaman(found);
-            setSearchError(null);
-        }
-      } else {
-        setSearchError(`Nomor Kontrak ${contractNumber} tidak ditemukan.`);
-      }
-      setIsSearching(false);
-    }, 1000);
+    setSelectedId(null);
+    setSearchQuery(contractNumber.trim());
   };
-  
-  // --- HANDLER PELUNASAN ---
+
   const handlePelunasan = async () => {
-    if (!dataPinjaman || !hasilPelunasan) return;
+    if (!pinjamanDetail || !pelunasanInfo) return;
 
-    const totalBayar = hasilPelunasan.totalTagihanPelunasan;
+    const { totalAmount, unpaidMonthsCount } = { 
+        totalAmount: pelunasanInfo.totalAmount, 
+        unpaidMonthsCount: pelunasanInfo.remainingMonths 
+    };
+    
+    const today = new Date().toISOString().substring(0, 10);
 
-    const { isConfirmed } = await Swal.fire({
-      title: "Konfirmasi Pelunasan Penuh",
+    const { value: paymentDetails } = await Swal.fire({
+      title: "Konfirmasi Pelunasan",
+      width: '600px',
       html: `
-        <p class="text-left mb-2">Anggota: <b>${dataPinjaman.anggota_name}</b></p>
-        <p class="text-left mb-4 text-xl font-bold text-primary">TOTAL DIBAYAR: ${formatRupiah(totalBayar)}</p>
+        <div class="text-left text-sm font-sans">
+          <div class="bg-blue-50 p-4 rounded-lg mb-4 border border-blue-100 text-center">
+             <p class="text-xs text-gray-500 uppercase font-semibold">Total Wajib Bayar</p>
+             <p class="text-3xl font-extrabold text-blue-700 tracking-tight">${formatRupiah(totalAmount)}</p>
+             <p class="text-xs text-gray-500 mt-1">Melunasi ${unpaidMonthsCount} bulan sisa angsuran</p>
+          </div>
         
-        <p class="text-left mb-2 text-sm text-red-600">Pelunasan akan menutup kontrak pembiayaan ini secara permanen.</p>
+        </div>
       `,
-      icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Proses Pelunasan",
       cancelButtonText: "Batal",
-      preConfirm: () => true, // Tidak perlu input tambahan
+      confirmButtonColor: "#2563eb", // Blue
+      reverseButtons: true,
     });
 
-    if (!isConfirmed) return;
-    
+    if (!paymentDetails) return;
+
     setIsProcessing(true);
-    
-    // Simulasi pemrosesan
-    setTimeout(() => {
-      // Logika update state (simulasi)
-      const newData = initialDummyData.map(d => {
-          if (d.no_kontrak === dataPinjaman.no_kontrak) {
-              return { 
-                  ...d, 
-                  sisa_pokok: 0,
-                  tenor_sisa: 0,
-                  status: 'Lunas',
-              };
-          }
-          return d;
-      });
-      
-      // Di implementasi nyata, kita panggil API penutupan kontrak
-      
-      // Reset state
-      setContractNumber("");
-      setDataPinjaman(null);
-      
-      setIsProcessing(false);
+
+    try {
+      const payload = pelunasanInfo.unpaidInstallments.map((item) => item.id);
+      const result = await bulkSettlement(payload).unwrap();
+
       Swal.fire({
         icon: "success",
         title: "Pelunasan Berhasil!",
-        html: `Kontrak <b>${dataPinjaman.no_kontrak}</b> atas nama <b>${dataPinjaman.anggota_name}</b> telah dilunasi penuh sebesar <b>${formatRupiah(totalBayar)}</b>.`,
+        text: `Pembiayaan telah berhasil dilunasi sebesar ${formatRupiah(totalAmount)}.`,
+        confirmButtonColor: "#2563eb",
       });
-      
-    }, 2000); 
+
+      refetchDetail();
+    } catch (error: any) {
+      console.error("Payment Error:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Gagal Memproses",
+        text: error?.data?.message || "Terjadi kesalahan saat memproses pelunasan.",
+        confirmButtonColor: "#dc2626",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
+  const isLoadingData = isListFetching || isDetailFetching;
 
   return (
     <div className="p-6 space-y-6">
       <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-        <DollarSign className="h-6 w-6 text-primary" />
-        Transaksi Pelunasan Pembiayaan
+        <CheckCircle className="h-6 w-6 text-primary" />
+        Pelunasan Pembiayaan (Settlement)
       </h2>
 
       {/* --- KARTU PENCARIAN --- */}
@@ -227,111 +248,160 @@ export default function PelunasanPembiayaanPage() {
         </CardHeader>
         <CardContent className="flex gap-4 items-end">
           <div className="flex-grow space-y-2">
-            <Label htmlFor="kontrak">Nomor Kontrak/Rekening Pembiayaan</Label>
+            <Label htmlFor="kontrak">Nomor Referensi / Kontrak</Label>
             <Input
               id="kontrak"
-              placeholder="Contoh: PJN/M/001"
+              placeholder="Contoh: PINJ/20251120/00002"
               value={contractNumber}
-              onChange={(e) => setContractNumber(e.target.value.toUpperCase())}
+              onChange={(e) => setContractNumber(e.target.value)}
               onKeyPress={(e) => {
-                if (e.key === 'Enter') handleSearch();
+                if (e.key === "Enter") handleSearch();
               }}
-              disabled={isSearching || isProcessing}
+              disabled={isLoadingData || isProcessing}
             />
           </div>
-          <Button 
-            onClick={handleSearch} 
-            disabled={isSearching || isProcessing}
-            className="h-10"
+          <Button
+            onClick={handleSearch}
+            disabled={isLoadingData || isProcessing}
+            className="h-10 min-w-[100px]"
           >
-            {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+            {isLoadingData ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Search className="h-5 w-5" />
+            )}
           </Button>
         </CardContent>
         {searchError && <p className="text-sm text-red-500 px-6 pb-4">{searchError}</p>}
       </Card>
 
-      {/* --- KARTU DETAIL PERHITUNGAN PELUNASAN --- */}
-      {dataPinjaman && hasilPelunasan && (
-        <Card className="shadow-lg border-t-4 border-red-500">
-          <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2 text-red-600">
-              <FileText className="h-5 w-5" /> Perhitungan Pelunasan Akselerasi
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* Informasi Anggota & Pinjaman */}
-            <div className="grid grid-cols-3 gap-4 mb-6 pb-4 border-b">
-              <div>
-                <p className="text-sm text-gray-500">Anggota</p>
-                <p className="font-bold flex items-center gap-1"><User className="h-4 w-4" /> {dataPinjaman.anggota_name}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Produk</p>
-                <p className="font-semibold">{dataPinjaman.produk}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Sisa Tenor</p>
-                <p className="font-bold">{dataPinjaman.tenor_sisa} bulan</p>
-              </div>
-            </div>
-
-            {/* Rincian Perhitungan */}
-            <div className="space-y-3">
-                <div className="flex justify-between font-semibold text-lg">
-                    <span>1. Sisa Pokok Pinjaman</span>
-                    <span className="text-primary">{formatRupiah(dataPinjaman.sisa_pokok)}</span>
-                </div>
-                
-                <div className="flex justify-between text-gray-600 border-t pt-2">
-                    <span className="text-sm">2. Sisa Jasa/Bunga Belum Ditagih ({dataPinjaman.tenor_sisa} bulan)</span>
-                    <span className="text-sm">{formatRupiah(hasilPelunasan.sisaTotalJasa)}</span>
-                </div>
-                
-                <div className="flex justify-between font-semibold text-green-600">
-                    <span>3. Diskon Jasa/Bunga Akselerasi</span>
-                    <span className="text-xl">- {formatRupiah(hasilPelunasan.diskonJasa)}</span>
-                </div>
-
-                <div className="flex justify-between font-semibold text-red-600">
-                    <span>4. Jasa/Bunga Tetap (Penalti/Admin)</span>
-                    <span>+ {formatRupiah(hasilPelunasan.jasaYangDitagih)}</span>
-                </div>
-            </div>
+      {/* --- KARTU DETAIL & DAFTAR TAGIHAN --- */}
+      {pinjamanDetail && pelunasanInfo && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in-50 slide-in-from-bottom-2">
             
-          </CardContent>
-          
-          <CardFooter className="flex flex-col gap-4">
-            <Separator className="my-2" />
-            <div className="flex justify-between w-full font-bold text-2xl">
-                <span>TOTAL TAGIHAN PELUNASAN</span>
-                <span className="text-red-700">{formatRupiah(hasilPelunasan.totalTagihanPelunasan)}</span>
-            </div>
+          {/* KOLOM KIRI: Summary & Action */}
+          <div className="lg:col-span-1 space-y-6">
+             <Card className="shadow-md border-l-4 border-blue-600">
+                <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2 text-blue-800">
+                        <User className="h-5 w-5" /> Data Anggota
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div>
+                        <p className="text-sm text-gray-500">Nama Anggota</p>
+                        <p className="font-bold text-gray-800">{pinjamanDetail.user.name}</p>
+                        <p className="text-xs text-gray-500">{pinjamanDetail.user.email}</p>
+                    </div>
+                    <Separator />
+                    <div>
+                        <p className="text-sm text-gray-500">Produk Pembiayaan</p>
+                        <p className="font-semibold text-gray-800">{pinjamanDetail.category.name}</p>
+                        <p className="text-xs font-mono bg-gray-100 inline-block px-2 py-0.5 rounded mt-1">{pinjamanDetail.reference}</p>
+                    </div>
+                </CardContent>
+             </Card>
 
-            <Button
-              onClick={handlePelunasan}
-              disabled={isProcessing}
-              className="w-full text-lg bg-red-600 hover:bg-red-700 mt-4"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Memproses Pelunasan...
-                </>
-              ) : (
-                <>
-                  <CreditCard className="mr-2 h-5 w-5" />
-                  Lunasi Penuh {formatRupiah(hasilPelunasan.totalTagihanPelunasan)}
-                </>
-              )}
-            </Button>
-          </CardFooter>
-        </Card>
+             <Card className="shadow-lg bg-blue-50 border border-blue-200">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-lg text-blue-900">Ringkasan Pelunasan</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex justify-between items-center">
+                        <span className="text-sm text-blue-700">Sisa Tenor</span>
+                        <span className="font-bold text-blue-900">{pelunasanInfo.remainingMonths} Bulan</span>
+                    </div>
+                    <Separator className="bg-blue-200"/>
+                    <div>
+                        <p className="text-sm text-blue-700 mb-1">Total Tagihan Pelunasan</p>
+                        <p className="text-3xl font-extrabold text-blue-800">{formatRupiah(pelunasanInfo.totalAmount)}</p>
+                    </div>
+                    
+                    {pelunasanInfo.remainingMonths > 0 ? (
+                         <Button
+                            onClick={handlePelunasan}
+                            disabled={isProcessing}
+                            className="w-full h-12 text-lg bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all"
+                        >
+                            {isProcessing ? (
+                                <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Memproses...</>
+                            ) : (
+                                <><DollarSign className="mr-2 h-5 w-5" /> Lunasi Sekarang</>
+                            )}
+                        </Button>
+                    ) : (
+                        <div className="bg-green-100 text-green-800 p-3 rounded-md text-center font-bold flex items-center justify-center gap-2">
+                            <CheckCircle className="h-5 w-5"/> SUDAH LUNAS
+                        </div>
+                    )}
+                   
+                </CardContent>
+             </Card>
+          </div>
+
+          {/* KOLOM KANAN: List Detail Angsuran */}
+          <Card className="lg:col-span-2 shadow-md h-fit">
+            <CardHeader>
+              <CardTitle className="text-xl flex items-center gap-2 text-gray-800">
+                <List className="h-5 w-5" /> Rincian Angsuran Belum Lunas
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+                {pelunasanInfo.unpaidInstallments.length > 0 ? (
+                    <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th className="px-6 py-3">Bulan Ke</th>
+                                    <th className="px-6 py-3">Jatuh Tempo</th>
+                                    <th className="px-6 py-3 text-right">Nominal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {pelunasanInfo.unpaidInstallments.map((item) => (
+                                    <tr key={item.id} className="bg-white border-b hover:bg-gray-50">
+                                        <td className="px-6 py-4 font-medium text-gray-900">
+                                            {item.month}
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-500">
+                                            <div className="flex items-center gap-2">
+                                                <Calendar className="h-4 w-4"/>
+                                                {formatDate(item.due_date)}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right font-bold text-gray-800">
+                                            {formatRupiah(item.remaining)}
+                                        </td>
+                                    </tr>
+                                ))}
+                                <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold">
+                                    <td className="px-6 py-4 text-right" colSpan={2}>TOTAL PELUNASAN</td>
+                                    <td className="px-6 py-4 text-right text-blue-700 text-lg">
+                                        {formatRupiah(pelunasanInfo.totalAmount)}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center justify-center py-12 text-green-600 bg-green-50 m-4 rounded-lg">
+                        <CheckCircle className="h-12 w-12 mb-2" />
+                        <p className="font-bold text-lg">Tidak ada tagihan tersisa.</p>
+                        <p className="text-sm">Pinjaman ini sudah lunas.</p>
+                    </div>
+                )}
+            </CardContent>
+          </Card>
+
+        </div>
       )}
 
-      {!dataPinjaman && !isSearching && !searchError && (
-        <p className="text-center text-gray-500 mt-10">
-          Masukkan Nomor Kontrak pinjaman yang akan dilunasi di kolom pencarian di atas.
-        </p>
+      {/* Empty State */}
+      {!pinjamanDetail && !isLoadingData && !searchError && (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400 opacity-60 border-2 border-dashed rounded-xl">
+          <Info className="h-16 w-16 mb-4" />
+          <p className="text-lg font-medium">Masukkan nomor kontrak untuk melakukan pelunasan.</p>
+        </div>
       )}
     </div>
   );

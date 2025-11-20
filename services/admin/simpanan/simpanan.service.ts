@@ -90,6 +90,19 @@ export const simpananApi = apiSlice.injectEndpoints({
       }) => response.data,
     }),
 
+    createSimpananSetoran: builder.mutation<Simpanan, CreateSimpananRequest>({
+      query: (payload) => ({
+        url: `/simpanan`,
+        method: "POST",
+        body: payload,
+      }),
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: Simpanan;
+      }) => response.data,
+    }),
+
     // ✏️ Update Simpanan by ID
     updateSimpanan: builder.mutation<
       Simpanan,
@@ -125,7 +138,7 @@ export const simpananApi = apiSlice.injectEndpoints({
     // 🔄 Update Status Simpanan
     updateSimpananStatus: builder.mutation<
       Simpanan,
-      { id: number; status: string }
+      { id: number; status: number }
     >({
       query: ({ id, status }) => ({
         url: `/simpanan/${id}/validate`,
@@ -257,6 +270,7 @@ export const {
   useGetSimpananListQuery,
   useGetSimpananByIdQuery,
   useCreateSimpananMutation,
+  useCreateSimpananSetoranMutation,
   useUpdateSimpananMutation,
   useDeleteSimpananMutation,
   useUpdateSimpananStatusMutation,

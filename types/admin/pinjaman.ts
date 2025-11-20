@@ -1,6 +1,10 @@
 export interface Pinjaman {
+  ref_number: number;
+  reference: any;
   id: number;
   pinjaman_category_id: number;
+  category_name?: string;
+  user_name?: string;
   user_id: number;
   description: string;
   date: string;
@@ -95,6 +99,10 @@ export interface PaymentHistory {
     due_date: string;
     amount: number;
   };
+}
+
+export interface Pelunasan {
+  data: number[];
 }
 
 export interface PaymentHistoryResponse {

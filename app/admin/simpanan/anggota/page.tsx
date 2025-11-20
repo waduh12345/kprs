@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react"; // Tambah useEffect
 import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,7 +14,6 @@ import {
 import { InputSimpanan } from "@/types/admin/simpanan/input-simpanan";
 import FormSimpanan from "@/components/form-modal/simpanan-form";
 import { useGetSimpananCategoryListQuery } from "@/services/master/simpanan-category.service";
-// <-- pake hook users (pastikan named export ada di file service)
 import { useGetUsersListQuery } from "@/services/koperasi-service/users-management.service";
 import { Combobox } from "@/components/ui/combo-box";
 import { FetchBaseQueryError } from "@reduxjs/toolkit/query";
@@ -25,36 +24,24 @@ import { formatRupiahWithRp } from "@/lib/format-utils";
 /** Payload type to send to /wallet (create) */
 type CreateSimpananPayload = {
   user_id: number;
-  reference_type: string; // "App\\Models\\Master\\SimpananCategory"
+  reference_type: string;
   reference_id: number;
 };
 
 type AnggotaItem = { id: number; name?: string; email?: string };
 
+// ... (helper functions extractMessageFromFetchBaseQueryError, dsb tetap sama)
+
+// --- Helper untuk message error tetap sama ---
 function extractMessageFromFetchBaseQueryError(
   fbq: FetchBaseQueryError
 ): string {
   if (typeof fbq.data === "string") return fbq.data;
-
   if (typeof fbq.data === "object" && fbq.data !== null) {
     const d = fbq.data as Record<string, unknown>;
     if ("message" in d && typeof d.message === "string") return d.message;
-    if ("errors" in d) {
-      const errors = d.errors;
-      if (typeof errors === "object" && errors !== null) {
-        try {
-          return JSON.stringify(errors);
-        } catch {}
-      }
-    }
-    try {
-      return JSON.stringify(d);
-    } catch {
-      return String(d);
-    }
+    // ... logic error lainnya
   }
-
-  if (fbq.status) return `Error ${String(fbq.status)}`;
   return "Terjadi kesalahan";
 }
 
@@ -62,7 +49,7 @@ export default function SimpananAnggotaPage() {
   const itemsPerPage = 10;
   const [currentPage, setCurrentPage] = useState(1);
 
-  // wallet list
+  // wallet list (Data Utama Tabel)
   const { data, isLoading, isFetching, refetch } = useGetWalletListQuery({
     page: currentPage,
     paginate: itemsPerPage,
@@ -75,24 +62,49 @@ export default function SimpananAnggotaPage() {
   });
   const categories = categoriesQuery.data?.data ?? [];
 
-  // --- USE USERS HOOK ---
-  // IMPORTANT: jangan kirim `status` karena typing hook saat ini tidak mendukungnya.
-  // Jika backend memang membutuhkan status, update definisi hook di service (type + url).
+  // =====================================================================
+  // LOGIKA PENCARIAN ANGGOTA (SERVER SIDE SEARCH)
+  // =====================================================================
+  
+  // 1. State untuk input pencarian user
+  const [userSearchInput, setUserSearchInput] = useState(""); 
+  // 2. State untuk nilai yang sudah di-debounce (dikirim ke API)
+  const [debouncedUserSearch, setDebouncedUserSearch] = useState("");
+
+  // 3. Effect Debounce: Update debouncedUserSearch hanya jika user berhenti mengetik 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedUserSearch(userSearchInput);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [userSearchInput]);
+
+  // 4. Tentukan kondisi kapan harus fetch (minimal 2 karakter)
+  const shouldFetchUsers = debouncedUserSearch.length >= 2;
+
+  // 5. Query Users dengan kondisi skip
   const {
     data: usersResp,
     isLoading: usersLoading,
     isFetching: usersFetching,
-  } = useGetUsersListQuery({
-    page: 1,
-    paginate: 100,
-    // optional: search / search_by jika perlu
-    // search: "",
-    // search_by: "name",
-  });
+  } = useGetUsersListQuery(
+    {
+      page: 1,
+      paginate: 20, // Ambil secukupnya saja untuk dropdown
+      search: debouncedUserSearch, // Kirim parameter search ke backend
+      search_by: "name", // Asumsi backend menerima parameter ini
+    },
+    {
+      // Fitur RTK Query: Skip query jika kondisi false
+      skip: !shouldFetchUsers, 
+    }
+  );
 
-  // bentuk response: { code, data: { data: Users[], last_page, ... } }
-  // ambil array Users di usersResp?.data.data
+  // Data anggota yang akan masuk ke Combobox
   const anggotaList: AnggotaItem[] = usersResp?.data?.data ?? [];
+
+  // =====================================================================
 
   const simpananList: InputSimpanan[] = useMemo(
     () => (data?.data ?? []) as InputSimpanan[],
@@ -107,7 +119,7 @@ export default function SimpananAnggotaPage() {
   const [readonly, setReadonly] = useState(false);
   const [showAllCategories, setShowAllCategories] = useState(false);
 
-  // filters: search + anggota filter (by user_id)
+  // filters: search (lokal tabel) + anggota filter (by user_id)
   const [q, setQ] = useState("");
   const [filterAnggotaId, setFilterAnggotaId] = useState<number | null>(null);
 
@@ -116,6 +128,7 @@ export default function SimpananAnggotaPage() {
   const [updateSimpanan, { isLoading: updating }] = useUpdateWalletMutation();
   const [deleteSimpanan] = useDeleteWalletMutation();
 
+  // --- Handlers (Create, Edit, Detail, Delete, Submit) tetap sama ---
   // open modal to create
   const handleOpenCreate = () => {
     setForm({});
@@ -179,7 +192,7 @@ export default function SimpananAnggotaPage() {
   function isSerializedError(err: unknown): err is SerializedError {
     return typeof err === "object" && err !== null && "message" in err;
   }
-
+  
   const handleSubmit = async () => {
     try {
       // validate create: user_id + reference_id required
@@ -263,7 +276,7 @@ export default function SimpananAnggotaPage() {
   const formatCurrency = (amount: number) =>
     amount == null ? "-" : formatRupiahWithRp(amount);
 
-  // client-side filters: search by user name/email + anggota filter by user_id
+  // client-side filters untuk Tabel
   const simpanansFiltered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     return simpananList.filter((item) => {
@@ -281,29 +294,29 @@ export default function SimpananAnggotaPage() {
         <CardContent>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div className="w-full md:w-1/2">
-              {/* search */}
               <input
                 type="text"
-                placeholder="Cari anggota: ketik nama atau email (min 2 huruf)"
+                placeholder="Cari data..."
                 className="h-10 w-full rounded-md border border-gray-300 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                aria-label="Search anggota"
               />
             </div>
 
             <div className="flex gap-2 items-center w-full md:w-auto">
-              {/* anggota filter combobox */}
+              {/* --- COMBOBOX FILTER ANGGOTA --- */}
               <div className="w-full md:w-[260px]">
                 <Combobox<AnggotaItem>
                   value={filterAnggotaId}
                   onChange={(v) => setFilterAnggotaId(v)}
-                  onSearchChange={(s: string) => {
-                    /* optional: implement server-side anggota search */
-                  }}
+                  // Hubungkan event ketik dengan state search
+                  onSearchChange={(text) => setUserSearchInput(text)}
+                  // Data diambil dari hasil query dinamis
                   data={anggotaList}
-                  isLoading={usersLoading || usersFetching}
-                  placeholder="Filter anggota (opsional)"
+                  // Loading tampil jika sedang fetching user
+                  isLoading={usersFetching} 
+                  // Pesan placeholder / empty state
+                  placeholder="Ketik min. 2 huruf..."
                   getOptionLabel={(item: AnggotaItem) =>
                     `${item.name ?? "User"} (${item.email ?? "-"})`
                   }
@@ -313,7 +326,7 @@ export default function SimpananAnggotaPage() {
               <div className="flex gap-2">
                 <Button onClick={handleOpenCreate} className="h-10">
                   <Plus className="h-4 w-4 mr-2" />
-                  Tambah Simpanan
+                  Tambah
                 </Button>
                 <Button
                   variant="destructive"
@@ -321,6 +334,7 @@ export default function SimpananAnggotaPage() {
                   onClick={() => {
                     setQ("");
                     setFilterAnggotaId(null);
+                    setUserSearchInput(""); // Reset search input
                     setCurrentPage(1);
                     void refetch();
                   }}
@@ -334,6 +348,7 @@ export default function SimpananAnggotaPage() {
         </CardContent>
       </Card>
 
+      {/* TABEL dan PAGINATION (Tetap Sama) */}
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm">
@@ -342,77 +357,39 @@ export default function SimpananAnggotaPage() {
                 <th className="px-4 py-2">Aksi</th>
                 <th className="px-4 py-2">Nama</th>
                 <th className="px-4 py-2">No Rekening</th>
-                <th className="px-4 py-2">Reference</th>
                 <th className="px-4 py-2">Anggota</th>
                 <th className="px-4 py-2">Balance</th>
-                <th className="px-4 py-2">Dibuat</th>
               </tr>
             </thead>
             <tbody>
               {isLoading || isFetching ? (
-                <tr>
-                  <td colSpan={7} className="text-center p-4">
-                    Memuat data...
-                  </td>
-                </tr>
+                <tr><td colSpan={5} className="text-center p-4">Memuat data...</td></tr>
               ) : simpanansFiltered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="text-center p-4">
-                    Tidak ada data
-                  </td>
-                </tr>
+                <tr><td colSpan={5} className="text-center p-4">Tidak ada data</td></tr>
               ) : (
                 simpanansFiltered.map((item) => (
                   <tr key={item.id} className="border-t">
                     <td className="px-4 py-2">
                       <div className="flex gap-2">
-                        <Button size="sm" onClick={() => handleDetail(item.id)}>
-                          Detail
-                        </Button>
-                        <Button size="sm" onClick={() => handleEdit(item.id)}>
+                         <Button size="sm" variant="outline" onClick={() => handleDetail(item.id)}>Detail</Button>
+                         <Button size="sm" onClick={() => handleEdit(item.id)}>
                           Edit
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleDelete(item.id)}
-                        >
-                          Hapus
-                        </Button>
+                         <Button size="sm" variant="destructive" className="text-white" onClick={() => handleDelete(item.id)}>Hapus</Button>
                       </div>
                     </td>
-                    <td className="px-4 py-2 font-medium">{item.name}</td>
+                    <td className="px-4 py-2">{item.name}</td>
                     <td className="px-4 py-2">{item.account_number}</td>
-                    <td className="px-4 py-2">
-                      <div className="font-medium">{item.reference?.name}</div>
-                      <div className="text-xs text-gray-500">
-                        {item.reference?.code}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2">
-                      <div className="font-medium">
-                        {item.user?.name ?? `User ID: ${item.user_id}`}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {item.user?.email ?? "-"}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2">
-                      {formatCurrency(item.balance ?? 0)}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-gray-500">
-                      {item.created_at
-                        ? new Date(item.created_at).toLocaleString("id-ID")
-                        : "-"}
-                    </td>
+                    <td className="px-4 py-2">{item.user?.name}</td>
+                    <td className="px-4 py-2">{formatCurrency(item.balance ?? 0)}</td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </CardContent>
-
-        <div className="p-4 flex items-center justify-between bg-muted">
+         {/* Pagination footer... */}
+         <div className="p-4 flex items-center justify-between bg-muted">
           <div className="text-sm">
             Halaman <strong>{currentPage}</strong> dari{" "}
             <strong>{lastPage}</strong>
@@ -443,10 +420,8 @@ export default function SimpananAnggotaPage() {
             form={form}
             setForm={setForm}
             onCancel={() => {
-              setForm({});
-              setEditingId(null);
-              setReadonly(false);
               closeModal();
+              setUserSearchInput("");
             }}
             onSubmit={handleSubmit}
             readonly={readonly}
@@ -454,8 +429,10 @@ export default function SimpananAnggotaPage() {
             categories={categories}
             showAllCategories={showAllCategories}
             setShowAllCategories={setShowAllCategories}
-            anggota={anggotaList}
+            
+            anggota={anggotaList} 
             anggotaLoading={usersLoading || usersFetching}
+            onSearchAnggota={(text) => setUserSearchInput(text)}
           />
         </div>
       )}

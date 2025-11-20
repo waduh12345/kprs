@@ -6,6 +6,7 @@ import {
   UpdatePinjamanRequest,
   PaymentHistory,
   PaymentHistoryResponse,
+  Pelunasan,
 } from "@/types/admin/pinjaman";
 
 export const pinjamanApi = apiSlice.injectEndpoints({
@@ -27,14 +28,18 @@ export const pinjamanApi = apiSlice.injectEndpoints({
         user_id?: number;
         date_from?: string;
         date_to?: string;
+        search?: string;
+        searchBySpecific?: string;
       }
     >({
-      query: ({ page, paginate, category_id, status, user_id, date_from, date_to }) => ({
+      query: ({ page, paginate, category_id, status, user_id, date_from, date_to, search, searchBySpecific }) => ({
         url: `/pinjaman`,
         method: "GET",
         params: {
           page,
           paginate,
+          ...(searchBySpecific && { searchBySpecific }),
+          ...(search && { search }),
           with: 'user,pinjaman_category', // Request relations
           ...(category_id && { category_id }),
           ...(status && { status }),
@@ -227,12 +232,12 @@ export const pinjamanApi = apiSlice.injectEndpoints({
     // 🔄 Update Status Pinjaman
     updatePinjamanStatus: builder.mutation<
       Pinjaman,
-      { id: number; status: string }
+      { id: number; status: string, realization_date?: string }
     >({
-      query: ({ id, status }) => ({
+      query: ({ id, status, realization_date }) => ({
         url: `/pinjaman/${id}/validate`,
         method: "PUT",
-        body: { status },
+        body: { status, realization_date },
       }),
       transformResponse: (response: {
         code: number;
@@ -291,14 +296,27 @@ export const pinjamanApi = apiSlice.injectEndpoints({
     // ➕ Create Payment History
     createPaymentHistory: builder.mutation<PaymentHistory, FormData>({
       query: (payload) => ({
-        url: `/pinjaman/payment`,
+      url: `/pinjaman/payment`,
+      method: "POST",
+      body: payload,
+      }),
+      transformResponse: (response: {
+      code: number;
+      message: string;
+      data: PaymentHistory;
+      }) => response.data,
+    }),
+
+    bulkSettlement: builder.mutation<Pelunasan, number[]>({
+      query: (data) => ({
+        url: `/pinjaman/payment/bulk-settlement`,
         method: "POST",
-        body: payload,
+        body: { data },
       }),
       transformResponse: (response: {
         code: number;
         message: string;
-        data: PaymentHistory;
+        data: Pelunasan;
       }) => response.data,
     }),
 
@@ -369,4 +387,5 @@ export const {
   useUpdatePaymentHistoryMutation,
   useDeletePaymentHistoryMutation,
   useUpdatePaymentStatusMutation,
+  useBulkSettlementMutation
 } = pinjamanApi;

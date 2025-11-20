@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,89 +16,46 @@ import {
   FileText,
   Calendar,
   FileDown,
-  BarChart2,
   ListChecks,
-  Search,
-  ListFilter,
-  Coins,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Swal from "sweetalert2";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { useGetWalletHistoriesQuery } from "@/services/admin/penarikan-simpanan.service";
 
-// --- DUMMY DATA & TYPES ---
+// --- TYPE DEFINITIONS SESUAI API ---
 
-interface MutasiSimpanan {
-  tanggal: string;
-  no_rekening: string;
-  anggota_name: string;
-  no_bukti: string;
-  keterangan: string;
-  tipe_transaksi: "Setoran" | "Penarikan" | "Bunga" | "Koreksi";
-  debet_nominal: number; // Penarikan/Pengurangan Saldo
-  kredit_nominal: number; // Setoran/Penambahan Saldo
+interface WalletHistory {
+  id: number;
+  wallet_id: number;
+  type: "debit" | "credit"; // Sesuaikan dengan response API
+  source_type: string;
+  source_id: number;
+  amount: number;
+  description: string;
+  created_at: string;
+  updated_at: string;
 }
 
-// Data Mutasi Simpanan Dummy
-const dummyMutasiData: MutasiSimpanan[] = [
-  // Rekening 1: SWJ-001
-  {
-    tanggal: "2025-11-01",
-    no_rekening: "SWJ-001",
-    anggota_name: "Budi Santoso",
-    no_bukti: "TRX-D001",
-    keterangan: "Setoran tunai",
-    tipe_transaksi: "Setoran",
-    debet_nominal: 0,
-    kredit_nominal: 500000,
-  },
-  {
-    tanggal: "2025-11-10",
-    no_rekening: "SWJ-001",
-    anggota_name: "Budi Santoso",
-    no_bukti: "TRX-W001",
-    keterangan: "Penarikan via ATM",
-    tipe_transaksi: "Penarikan",
-    debet_nominal: 200000,
-    kredit_nominal: 0,
-  },
-  // Rekening 2: WJB-002
-  {
-    tanggal: "2025-11-15",
-    no_rekening: "WJB-002",
-    anggota_name: "Siti Rahayu",
-    no_bukti: "TRX-AUT001",
-    keterangan: "Setoran wajib (Auto Debet)",
-    tipe_transaksi: "Setoran",
-    debet_nominal: 0,
-    kredit_nominal: 100000,
-  },
-  {
-    tanggal: "2025-11-30",
-    no_rekening: "WJB-002",
-    anggota_name: "Siti Rahayu",
-    no_bukti: "TRX-BUNGA",
-    keterangan: "Pembukuan Bunga Simpanan",
-    tipe_transaksi: "Bunga",
-    debet_nominal: 0,
-    kredit_nominal: 50000,
-  },
-  {
-    tanggal: "2025-10-31",
-    no_rekening: "SWJ-001",
-    anggota_name: "Budi Santoso",
-    no_bukti: "TRX-KOR001",
-    keterangan: "Koreksi salah posting",
-    tipe_transaksi: "Koreksi",
-    debet_nominal: 10000,
-    kredit_nominal: 0,
-  },
-];
+interface WalletHistoryResponse {
+  current_page: number;
+  data: WalletHistory[];
+  first_page_url: string;
+  from: number;
+  last_page: number; // Biasanya ada di response Laravel standard, kita asumsi ada atau hitung manual
+  per_page: number;
+  to: number;
+  total: number; // Biasanya ada
+  next_page_url?: string;
+  prev_page_url?: string;
+}
 
 // --- HELPER FUNCTIONS ---
 
 const formatRupiah = (number: number) => {
-  if (isNaN(number) || number === null || number === undefined) return '0';
+  if (isNaN(number) || number === null || number === undefined) return "Rp 0";
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
@@ -106,111 +63,158 @@ const formatRupiah = (number: number) => {
   }).format(number);
 };
 
-const getStatusBadge = (tipe: MutasiSimpanan["tipe_transaksi"]) => {
-  if (tipe === "Setoran") return <Badge variant="success">SETORAN</Badge>;
-  if (tipe === "Penarikan") return <Badge variant="destructive">PENARIKAN</Badge>;
-  if (tipe === "Bunga") return <Badge variant="default" className="bg-yellow-500 hover:bg-yellow-600">BUNGA</Badge>;
-  return <Badge variant="secondary">KOREKSI</Badge>;
-}
+const formatDate = (dateString: string) => {
+  if (!dateString) return "-";
+  return new Date(dateString).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const getStatusBadge = (type: string) => {
+  if (type === "debit")
+    return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 border-blue-200">DEBIT</Badge>;
+  if (type === "credit")
+    return <Badge className="bg-green-100 text-green-800 hover:bg-green-200 border-green-200">KREDIT</Badge>;
+  return <Badge variant="secondary">{type.toUpperCase()}</Badge>;
+};
 
 // --- KOMPONEN UTAMA ---
 
 export default function LaporanMutasiSimpananPage() {
+  const itemsPerPage = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Filter State
+  // Catatan: Asumsi API menerima parameter filter. Jika tidak, filter hanya berlaku client-side (tidak ideal untuk data besar)
+  // Disini saya mengirim params ke hook, pastikan service Anda meneruskannya ke endpoint
   const today = new Date().toISOString().substring(0, 10);
-  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().substring(0, 10);
-  
+  const startOfMonth = new Date(
+    new Date().getFullYear(),
+    new Date().getMonth(),
+    1
+  )
+    .toISOString()
+    .substring(0, 10);
+
   const [startDate, setStartDate] = useState(startOfMonth);
   const [endDate, setEndDate] = useState(today);
   const [query, setQuery] = useState("");
   const [tipeFilter, setTipeFilter] = useState("all");
 
-  // --- FILTERING ---
-  const filteredMutasi = useMemo(() => {
-    let arr = dummyMutasiData;
+  // --- FETCH DATA FROM API ---
+  const { data: apiResponse, isLoading, isFetching, refetch } = useGetWalletHistoriesQuery({
+    page: currentPage,
+    paginate: itemsPerPage,
+    // Tambahkan parameter ini jika API backend Anda mendukung filter
+    start_date: startDate,
+    end_date: endDate,
+    search: query,
+    type: tipeFilter !== "all" ? tipeFilter : undefined,
+  });
 
-    // 1. Filter Tanggal
-    arr = arr.filter(
-      (it) => it.tanggal >= startDate && it.tanggal <= endDate
-    );
+  // Casting response agar TypeScript aman
+  const historyData = (apiResponse?.data as WalletHistory[]) || [];
+  const meta = apiResponse as WalletHistoryResponse; // Metadata pagination
 
-    // 2. Filter Tipe Transaksi
-    if (tipeFilter !== "all") {
-      arr = arr.filter((it) => it.tipe_transaksi === tipeFilter);
-    }
-
-    // 3. Filter Query Pencarian
-    if (!query.trim()) return arr;
-    const q = query.toLowerCase();
-    return arr.filter((it) =>
-      [it.anggota_name, it.no_rekening, it.keterangan].some(
-        (f) => f?.toLowerCase?.().includes?.(q)
-      )
-    );
-  }, [dummyMutasiData, query, startDate, endDate, tipeFilter]);
-
-  // --- SUMMARY ---
+  // --- SUMMARY (Berdasarkan data halaman saat ini) ---
   const summary = useMemo(() => {
-    const totalDebet = filteredMutasi.reduce((sum, item) => sum + item.debet_nominal, 0);
-    const totalKredit = filteredMutasi.reduce((sum, item) => sum + item.kredit_nominal, 0);
-    return { totalDebet, totalKredit, totalTransaksi: filteredMutasi.length };
-  }, [filteredMutasi]);
+    let totalDebet = 0;
+    let totalKredit = 0;
 
-  // --- HANDLER EXPORT ---
+    historyData.forEach((item) => {
+      if (item.type === "debit") {
+        totalDebet += item.amount;
+      } else if (item.type === "credit") {
+        totalKredit += item.amount;
+      }
+    });
+
+    return { totalDebet, totalKredit, totalTransaksi: historyData.length };
+  }, [historyData]);
+
+  // --- HANDLER ---
   const handleExportExcel = () => {
     Swal.fire({
       icon: "info",
       title: "Export Laporan Mutasi",
-      text: `Mengekspor data Mutasi Simpanan dari ${startDate} hingga ${endDate}. (Simulasi)`,
+      text: `Fitur export data dari ${startDate} s/d ${endDate} sedang dikembangkan.`,
       confirmButtonText: "Oke",
     });
   };
-  
-  // --- RENDERING TABEL MUTASI ---
-  const renderMutasiTable = (data: MutasiSimpanan[]) => {
-    // Di laporan Mutasi (Bank Statement style), Saldo Akhir biasanya tidak dihitung
-    // per baris di tabel utama, tetapi di Laporan Buku Besar. Namun, kita tambahkan
-    // ringkasan total.
+
+  const handleNextPage = () => {
+    if (meta?.next_page_url) setCurrentPage((prev) => prev + 1);
+  };
+
+  const handlePrevPage = () => {
+    if (meta?.prev_page_url && currentPage > 1) setCurrentPage((prev) => prev - 1);
+  };
+
+  // --- RENDERING TABEL ---
+  const renderMutasiTable = () => {
+    if (isLoading || isFetching) {
+      return (
+        <div className="flex flex-col items-center justify-center py-10 text-gray-500">
+          <Loader2 className="h-10 w-10 animate-spin mb-2 text-primary" />
+          <p>Memuat data mutasi...</p>
+        </div>
+      );
+    }
 
     return (
       <div className="p-0 overflow-x-auto border rounded-lg">
         <table className="min-w-full text-sm">
           <thead className="sticky top-0 bg-muted text-left">
             <tr>
-              <th className="px-4 py-3 w-[100px]">Tanggal</th>
-              <th className="px-4 py-3 w-[150px]">No. Rekening</th>
-              <th className="px-4 py-3 w-[150px]">Tipe Transaksi</th>
-              <th className="px-4 py-3">Anggota & Keterangan</th>
-              <th className="px-4 py-3 text-right w-[150px]">Debet (Penarikan)</th>
-              <th className="px-4 py-3 text-right w-[150px]">Kredit (Setoran)</th>
+              <th className="px-4 py-3 w-[150px]">Tanggal</th>
+              <th className="px-4 py-3 w-[100px]">Tipe</th>
+              <th className="px-4 py-3">Keterangan / Sumber</th>
+              <th className="px-4 py-3 text-right w-[180px] bg-blue-50/50">Debit</th>
+              <th className="px-4 py-3 text-right w-[180px] bg-green-50/50">Kredit</th>
             </tr>
           </thead>
           <tbody>
-            {data.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center p-4">
-                    Tidak ada transaksi mutasi yang ditemukan untuk filter yang dipilih.
-                  </td>
-                </tr>
+            {historyData.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="text-center p-8 text-gray-500">
+                  Tidak ada transaksi mutasi yang ditemukan.
+                </td>
+              </tr>
             ) : (
-                data.map((item, index) => (
-                    <tr key={index} className="border-t hover:bg-gray-50">
-                        <td className="px-4 py-2 whitespace-nowrap text-gray-600">{item.tanggal}</td>
-                        <td className="px-4 py-2 font-medium">{item.no_rekening}</td>
-                        <td className="px-4 py-2">
-                            {getStatusBadge(item.tipe_transaksi)}
-                        </td>
-                        <td className="px-4 py-2">
-                            <span className="font-semibold">{item.anggota_name}</span><br/>
-                            <span className="text-xs italic text-gray-600">{item.keterangan}</span>
-                        </td>
-                        <td className="px-4 py-2 text-right font-semibold text-red-600">
-                            {formatRupiah(item.debet_nominal)}
-                        </td>
-                        <td className="px-4 py-2 text-right font-semibold text-green-600">
-                            {formatRupiah(item.kredit_nominal)}
-                        </td>
-                    </tr>
-                ))
+              historyData.map((item) => {
+                // Logika pemisahan kolom
+                const isDebit = item.type === "debit";
+                const isCredit = item.type === "credit";
+
+                return (
+                  <tr key={item.id} className="border-t hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 whitespace-nowrap text-gray-600">
+                      {formatDate(item.created_at)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {getStatusBadge(item.type)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-900">{item.description}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Reff ID: {item.source_id} • Wallet ID: {item.wallet_id}
+                      </p>
+                    </td>
+                    {/* Kolom DEBIT */}
+                    <td className="px-4 py-3 text-right font-semibold text-blue-700 bg-blue-50/30">
+                      {isDebit ? formatRupiah(item.amount) : "-"}
+                    </td>
+                    {/* Kolom KREDIT */}
+                    <td className="px-4 py-3 text-right font-semibold text-green-700 bg-green-50/30">
+                      {isCredit ? formatRupiah(item.amount) : "-"}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -225,7 +229,7 @@ export default function LaporanMutasiSimpananPage() {
         Laporan Mutasi Simpanan
       </h2>
 
-      {/* --- KARTU KONTROL FILTER --- */}
+      {/* --- FILTER --- */}
       <Card>
         <CardHeader>
           <CardTitle className="text-xl flex items-center gap-2 text-indigo-600">
@@ -252,75 +256,102 @@ export default function LaporanMutasiSimpananPage() {
             />
           </div>
           <div className="space-y-2 col-span-1">
-            <Label htmlFor="tipe_filter">Tipe Transaksi</Label>
+            <Label htmlFor="tipe_filter">Tipe Mutasi</Label>
             <Select onValueChange={setTipeFilter} value={tipeFilter}>
-                <SelectTrigger id="tipe_filter">
-                    <SelectValue placeholder="Pilih Tipe" />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="all">Semua Tipe</SelectItem>
-                    <SelectItem value="Setoran">Setoran</SelectItem>
-                    <SelectItem value="Penarikan">Penarikan</SelectItem>
-                    <SelectItem value="Bunga">Bunga</SelectItem>
-                    <SelectItem value="Koreksi">Koreksi</SelectItem>
-                </SelectContent>
+              <SelectTrigger id="tipe_filter">
+                <SelectValue placeholder="Pilih Tipe" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                <SelectItem value="debit">Debit</SelectItem>
+                <SelectItem value="credit">Kredit</SelectItem>
+              </SelectContent>
             </Select>
           </div>
           <div className="space-y-2 col-span-2">
-            <Label htmlFor="search_query">Cari Rekening / Anggota</Label>
-            <Input
-              id="search_query"
-              placeholder="No. Rekening, Nama Anggota, atau Keterangan"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="h-10"
-            />
+            <Label htmlFor="search_query">Pencarian</Label>
+            <div className="flex gap-2">
+              <Input
+                id="search_query"
+                placeholder="Cari deskripsi..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="h-10"
+              />
+              <Button onClick={() => refetch()} disabled={isLoading}>
+                Cari
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* --- SUMMARY MUTASI --- */}
-      <Card className="bg-muted p-4">
-        <div className="flex justify-between items-center">
-            <div className="grid grid-cols-3 gap-6 font-semibold">
-                <div className="text-red-700">
-                    <p className="text-sm text-gray-600">Total Mutasi Debet (Penarikan)</p>
-                    <p className="text-xl">{formatRupiah(summary.totalDebet)}</p>
-                </div>
-                <div className="text-green-700">
-                    <p className="text-sm text-gray-600">Total Mutasi Kredit (Setoran/Bunga)</p>
-                    <p className="text-xl">{formatRupiah(summary.totalKredit)}</p>
-                </div>
-                <div className="">
-                    <p className="text-sm text-gray-600">Jumlah Transaksi</p>
-                    <p className="text-xl font-bold">{summary.totalTransaksi} Transaksi</p>
-                </div>
+      {/* --- SUMMARY --- */}
+      <Card className="bg-white border-l-4 border-indigo-500 shadow-sm">
+        <div className="p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Total Debit (Halaman Ini)</p>
+              <p className="text-2xl font-bold text-blue-700">{formatRupiah(summary.totalDebet)}</p>
             </div>
-            <Button
-                onClick={handleExportExcel}
-                className="bg-red-600 hover:bg-red-700"
-            >
-                <FileDown className="mr-2 h-4 w-4" />
-                Export Mutasi
-            </Button>
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Total Kredit (Halaman Ini)</p>
+              <p className="text-2xl font-bold text-green-700">{formatRupiah(summary.totalKredit)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Jumlah Transaksi</p>
+              <p className="text-2xl font-bold text-gray-800">{summary.totalTransaksi}</p>
+            </div>
+          </div>
+          <Button
+            onClick={handleExportExcel}
+            variant="outline"
+            className="border-green-600 text-green-700 hover:bg-green-50"
+          >
+            <FileDown className="mr-2 h-4 w-4" />
+            Export Excel
+          </Button>
         </div>
       </Card>
 
-      {/* --- TABEL MUTASI SIMPANAN --- */}
+      {/* --- TABEL DATA --- */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
-            <ListChecks className="h-5 w-5" /> Detail Transaksi Simpanan
+            <ListChecks className="h-5 w-5" /> Riwayat Transaksi
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {renderMutasiTable(filteredMutasi)}
+          {renderMutasiTable()}
+          
+          {/* Pagination Control */}
+          {meta && (
+             <div className="flex items-center justify-between px-4 py-4 border-t bg-gray-50">
+               <div className="text-sm text-gray-500">
+                 Menampilkan <b>{meta.from || 0}</b> sampai <b>{meta.to || 0}</b> dari <b>{meta.total || 0}</b> data
+               </div>
+               <div className="flex gap-2">
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   onClick={handlePrevPage}
+                   disabled={!meta.prev_page_url || isLoading}
+                 >
+                   <ChevronLeft className="h-4 w-4 mr-1" /> Prev
+                 </Button>
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   onClick={handleNextPage}
+                   disabled={!meta.next_page_url || isLoading}
+                 >
+                   Next <ChevronRight className="h-4 w-4 ml-1" />
+                 </Button>
+               </div>
+             </div>
+          )}
         </CardContent>
       </Card>
-      
-      <p className="text-xs text-gray-500 mt-4">
-        *Laporan ini menyajikan semua transaksi simpanan secara kronologis dalam periode yang dipilih.
-      </p>
     </div>
   );
 }

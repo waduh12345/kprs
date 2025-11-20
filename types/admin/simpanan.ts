@@ -70,8 +70,8 @@ export interface SimpananResponse {
 
 export interface CreateSimpananRequest {
   simpanan_category_id: number;
-  reference_id: number;
-  reference_type: string;
+  reference_id?: number;
+  reference_type?: string;
   user_id: number;
   description?: string;
   date: string;

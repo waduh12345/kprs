@@ -694,479 +694,51 @@ export default function AuthForm({ mode }: AuthFormProps) {
                 </>
               )}
 
-              {/* ======= REGISTER: DATA DIRI ======= */}
-              {isRegister && activeTab === "data" && (
-                <>
-                  {/* Baris 1: Nama, Email */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label
-                        htmlFor="name"
-                        className="text-sm font-semibold text-gray-700"
-                      >
-                        Nama Lengkap
-                      </Label>
-                      <div className="relative">
-                        <FaUser className="absolute left-3 top-1/2 -translate-y-1/2 text-red-500" />
-                        <Input
-                          id="name"
-                          type="text"
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          required
-                          className="pl-10 pr-4 py-3 border-red-200 focus:border-red-500 focus:ring-red-500/20 rounded-lg transition-all duration-200"
-                          placeholder="Masukkan nama lengkap"
-                          aria-invalid={!!fieldErrors.name}
-                        />
-                      </div>
-                      {fieldErrors.name && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.name}
-                        </p>
-                      )}
-                    </motion.div>
-
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label
-                        htmlFor="email"
-                        className="text-sm font-semibold text-gray-700"
-                      >
-                        Email
-                      </Label>
-                      <div className="relative">
-                        <FaEnvelope className="absolute left-3 top-1/2 -translate-y-1/2 text-red-500" />
-                        <Input
-                          id="email"
-                          type="email"
-                          placeholder="email@example.com"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          required
-                          className="pl-10 pr-4 py-3 border-red-200 focus:border-red-500 focus:ring-red-500/20 rounded-lg transition-all duration-200"
-                          aria-invalid={!!fieldErrors.email}
-                        />
-                      </div>
-                      {fieldErrors.email && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.email}
-                        </p>
-                      )}
-                    </motion.div>
-                  </div>
-
-                  {/* Baris 2: Phone */}
-                  <motion.div variants={variants} className="space-y-2">
-                    <Label
-                      htmlFor="phone"
-                      className="text-sm font-semibold text-gray-700"
-                    >
-                      Nomor Telepon
-                    </Label>
-                    <div className="relative">
-                      <FaPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-red-500" />
-                      <Input
-                        id="phone"
-                        type="tel"
-                        inputMode="numeric"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        required
-                        className="pl-10 pr-4 py-3 border-red-200 focus:border-red-500 focus:ring-red-500/20 rounded-lg transition-all duration-200"
-                        placeholder="08xxxxxxxxxx"
-                        aria-invalid={!!fieldErrors.phone}
-                      />
-                    </div>
-                    {fieldErrors.phone && (
-                      <p className="text-xs text-red-600">
-                        {fieldErrors.phone}
-                      </p>
-                    )}
-                  </motion.div>
-
-                  {/* Baris 3: Password & Konfirmasi */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label
-                        htmlFor="password"
-                        className="text-sm font-semibold text-gray-700"
-                      >
-                        Password
-                      </Label>
-                      <div className="relative">
-                        <FaLock className="absolute left-3 top-1/2 -translate-y-1/2 text-red-500" />
-                        <Input
-                          id="password"
-                          type="password"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          required
-                          className="pl-10 pr-4 py-3 border-red-200 focus:border-red-500 focus:ring-red-500/20 rounded-lg transition-all duration-200"
-                          placeholder="Masukkan password"
-                          aria-invalid={!!fieldErrors.password}
-                        />
-                      </div>
-                      {fieldErrors.password && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.password}
-                        </p>
-                      )}
-                    </motion.div>
-
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label
-                        htmlFor="password_confirmation"
-                        className="text-sm font-semibold text-gray-700"
-                      >
-                        Konfirmasi Password
-                      </Label>
-                      <div className="relative">
-                        <FaLock className="absolute left-3 top-1/2 -translate-y-1/2 text-red-500" />
-                        <Input
-                          id="password_confirmation"
-                          type="password"
-                          value={passwordConfirmation}
-                          onChange={(e) =>
-                            setPasswordConfirmation(e.target.value)
-                          }
-                          required
-                          className="pl-10 pr-4 py-3 border-red-200 focus:border-red-500 focus:ring-red-500/20 rounded-lg transition-all duration-200"
-                          placeholder="Konfirmasi password"
-                          aria-invalid={!!fieldErrors.password_confirmation}
-                        />
-                      </div>
-                      {fieldErrors.password_confirmation && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.password_confirmation}
-                        </p>
-                      )}
-                    </motion.div>
-                  </div>
-
-                  {/* Baris 4: Gender, Tempat/Tanggal Lahir */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label className="text-sm font-semibold text-gray-700">
-                        Gender
-                      </Label>
-                      <select
-                        className="border rounded-md px-3 py-2 text-sm bg-white border-gray-200 focus:border-red-500 focus:ring-red-500/20"
-                        value={gender}
-                        onChange={(e) =>
-                          setGender(e.target.value as "M" | "F" | "")
-                        }
-                        aria-invalid={!!fieldErrors.gender}
-                      >
-                        <option value="">Pilih Gender</option>
-                        <option value="M">Male (M)</option>
-                        <option value="F">Female (F)</option>
-                      </select>
-                      {fieldErrors.gender && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.gender}
-                        </p>
-                      )}
-                    </motion.div>
-
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label className="text-sm font-semibold text-gray-700">
-                        Tempat Lahir
-                      </Label>
-                      <Input
-                        value={birthPlace}
-                        onChange={(e) => setBirthPlace(e.target.value)}
-                        placeholder="Kota/Kabupaten"
-                        aria-invalid={!!fieldErrors.birth_place}
-                      />
-                      {fieldErrors.birth_place && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.birth_place}
-                        </p>
-                      )}
-                    </motion.div>
-
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label className="text-sm font-semibold text-gray-700">
-                        Tanggal Lahir
-                      </Label>
-                      <Input
-                        type="date"
-                        value={formatDateForInput(birthDate) ?? ""}
-                        onChange={(e) => setBirthDate(e.target.value)}
-                        aria-invalid={!!fieldErrors.birth_date}
-                      />
-                      {fieldErrors.birth_date && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.birth_date}
-                        </p>
-                      )}
-                    </motion.div>
-                  </div>
-
-                  {/* Baris 5: NIK / NPWP */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label className="text-sm font-semibold text-gray-700">
-                        NIK
-                      </Label>
-                      <Input
-                        value={nik}
-                        inputMode="numeric"
-                        onChange={(e) => setNik(digitsOnly(e.target.value))}
-                        placeholder="16 digit"
-                        aria-invalid={!!fieldErrors.nik}
-                      />
-                      {fieldErrors.nik && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.nik}
-                        </p>
-                      )}
-                    </motion.div>
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label className="text-sm font-semibold text-gray-700">
-                        NPWP
-                      </Label>
-                      <Input
-                        value={npwp}
-                        onChange={(e) => setNpwp(e.target.value)}
-                        placeholder="15 digit (boleh dengan titik/garis)"
-                        aria-invalid={!!fieldErrors.npwp}
-                      />
-                      {fieldErrors.npwp && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.npwp}
-                        </p>
-                      )}
-                    </motion.div>
-                  </div>
-
-                  {/* Baris 6: NIP / Unit Kerja / Jabatan */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label className="text-sm font-semibold text-gray-700">
-                        NIP
-                      </Label>
-                      <Input
-                        value={nip}
-                        inputMode="numeric"
-                        onChange={(e) => setNip(digitsOnly(e.target.value))}
-                        placeholder="8–20 digit"
-                        aria-invalid={!!fieldErrors.nip}
-                      />
-                      {fieldErrors.nip && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.nip}
-                        </p>
-                      )}
-                    </motion.div>
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label className="text-sm font-semibold text-gray-700">
-                        Unit Kerja
-                      </Label>
-                      <Input
-                        value={unitKerja}
-                        onChange={(e) => setUnitKerja(e.target.value)}
-                        aria-invalid={!!fieldErrors.unit_kerja}
-                      />
-                      {fieldErrors.unit_kerja && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.unit_kerja}
-                        </p>
-                      )}
-                    </motion.div>
-                    <motion.div variants={variants} className="space-y-2">
-                      <Label className="text-sm font-semibold text-gray-700">
-                        Jabatan
-                      </Label>
-                      <Input
-                        value={jabatan}
-                        onChange={(e) => setJabatan(e.target.value)}
-                        aria-invalid={!!fieldErrors.jabatan}
-                      />
-                      {fieldErrors.jabatan && (
-                        <p className="text-xs text-red-600">
-                          {fieldErrors.jabatan}
-                        </p>
-                      )}
-                    </motion.div>
-                  </div>
-
-                  {/* Baris 7: Alamat */}
-                  <motion.div variants={variants} className="space-y-2">
-                    <Label className="text-sm font-semibold text-gray-700">
-                      Alamat
-                    </Label>
-                    <Textarea
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="Tulis alamat lengkap"
-                      aria-invalid={!!fieldErrors.address}
-                    />
-                    {fieldErrors.address && (
-                      <p className="text-xs text-red-600">
-                        {fieldErrors.address}
-                      </p>
-                    )}
-                  </motion.div>
-
-                  {/* Floating next button (sticky di dalam scroll container) */}
-                  <div className="sticky bottom-28 z-30 flex justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setActiveTab("dokumen")}
-                      className="flex items-center gap-2 shadow-md bg-white/90 backdrop-blur-md border"
-                    >
-                      Lanjut ke Dokumen
-                      <FaArrowRight />
-                    </Button>
-                  </div>
-                </>
-              )}
-
-              {/* ======= REGISTER: DOKUMEN ======= */}
-              {isRegister && activeTab === "dokumen" && (
-                <>
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-semibold">Dokumen</h3>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setActiveTab("data")}
-                      >
-                        Kembali ke Data Diri
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={addDocRow}
-                        className="flex items-center gap-2"
-                      >
-                        <FaPlus /> Tambah Baris
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {documents.map((doc, idx) => {
-                      const firstMedia: MediaItem | undefined = doc.media?.[0];
-                      const existingUrl = firstMedia?.original_url ?? "";
-
-                      return (
-                        <div
-                          key={idx}
-                          className="grid grid-cols-1 sm:grid-cols-12 gap-3 border rounded-lg p-3"
-                        >
-                          <div className="sm:col-span-5">
-                            <Label>Nama File</Label>
-                            <Input
-                              value={doc.key ?? ""}
-                              onChange={(e) =>
-                                updateDocKey(idx, e.target.value)
-                              }
-                              placeholder="Contoh: KTP / KK / NPWP"
-                            />
-                          </div>
-
-                          <div className="sm:col-span-5">
-                            <Label>File</Label>
-                            <Input
-                              type="file"
-                              onChange={(e) =>
-                                updateDocFile(idx, e.target.files?.[0] || null)
-                              }
-                            />
-                            {existingUrl && (
-                              <a
-                                className="text-xs text-blue-600 mt-1 inline-block"
-                                href={existingUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                Lihat file lama
-                              </a>
-                            )}
-                            {doc.document && doc.document instanceof File && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                File baru: {doc.document.name}
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="sm:col-span-2 flex items-end">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => removeDocRow(idx)}
-                              className="flex items-center gap-2"
-                            >
-                              <FaTrash /> Hapus
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <p className="text-xs text-gray-500">
-                    * Pengiriman file dokumen akan diaktifkan saat endpoint
-                    multipart siap.
-                  </p>
-                </>
-              )}
             </div>
 
             {/* Sticky Footer (Submit) */}
             <div className="sticky bottom-0 z-20 bg-white/90 backdrop-blur-md border-t border-red-100">
               <div className="px-8 pt-4">
-                {error && (
-                  <motion.div
-                    variants={variants}
-                    className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3"
-                  >
-                    <p className="text-sm text-red-600 text-center font-medium">
-                      {error}
-                    </p>
-                  </motion.div>
-                )}
+              {error && (
+                <motion.div
+                variants={variants}
+                className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3"
+                >
+                <p className="text-sm text-red-600 text-center font-medium">
+                  {error}
+                </p>
+                </motion.div>
+              )}
               </div>
               <div className="px-8 pb-8">
-                <Button
-                  type="submit"
-                  className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 transition-all duration-300 transform hover:scale-[1.02] shadow-lg hover:shadow-xl py-3 rounded-lg font-semibold"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      Memproses...
-                    </div>
-                  ) : (
-                    <>
-                      {isLogin
-                        ? "Masuk ke Dashboard"
-                        : "Daftar sebagai Anggota"}
-                      <FaArrowRight className="text-sm" />
-                    </>
-                  )}
-                </Button>
+              <Button
+                type="submit"
+                className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 transition-all duration-200 shadow-lg hover:shadow-xl py-3 rounded-lg font-semibold"
+                disabled={isLoading}
+                style={{
+                transitionProperty:
+                  "background, box-shadow, color, border-color",
+                transitionTimingFunction: "ease",
+                }}
+              >
+                {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  Memproses...
+                </div>
+                ) : (
+                <>
+                  {isLogin
+                  ? "Masuk ke Dashboard"
+                  : "Daftar sebagai Anggota"}
+                  <FaArrowRight className="text-sm" />
+                </>
+                )}
+              </Button>
               </div>
             </div>
           </motion.form>
 
-          <motion.div
-            variants={variants}
-            className="text-center text-sm bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-red-100"
-          >
-            <span className="text-gray-600">
-              {isLogin ? "Belum memiliki akun admin?" : "Sudah memiliki akun?"}{" "}
-            </span>
-            <a
-              href={isLogin ? "/auth/register" : "/auth/login"}
-              className="font-semibold text-red-600 hover:text-red-700 hover:underline transition-colors duration-200"
-            >
-              {isLogin ? "Daftar sekarang" : "Masuk ke sistem"}
-            </a>
-          </motion.div>
         </motion.div>
       </div>
     </div>

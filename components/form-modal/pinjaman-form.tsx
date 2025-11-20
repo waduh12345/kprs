@@ -8,6 +8,7 @@ import { Pinjaman } from "@/types/admin/pinjaman";
 import { useGetPinjamanCategoryListQuery } from "@/services/master/pinjaman-category.service";
 import { formatRupiah, parseRupiah } from "@/lib/format-utils";
 import { AnggotaPicker } from "../ui/anggota-picker";
+import { Combobox } from "@/components/ui/combo-box"; // Pastikan path ini sesuai
 
 /* ===================== Anggota Picker (min 3 char, sama spt SimpananForm) ===================== */
 export type Anggota = {
@@ -21,7 +22,13 @@ export const DEBOUNCE_MS = 350;
 
 /* ===================== Form Utama ===================== */
 
-type CategoryItem = { id: number; name: string; code?: string | null };
+type CategoryItem = { 
+  id: number; 
+  name: string; 
+  code?: string | null;
+  interest_rate?: number; // Tambahan dari API
+  admin_fee?: number;     // Tambahan dari API
+};
 
 interface FormPinjamanProps {
   form: Partial<Pinjaman>;
@@ -32,6 +39,11 @@ interface FormPinjamanProps {
   isLoading?: boolean;
 }
 
+// Memperluas tipe Form jika tipe Pinjaman belum memiliki admin_fee
+type ExtendedForm = Partial<Pinjaman> & {
+  admin_fee?: number;
+};
+
 export default function FormPinjaman({
   form,
   setForm,
@@ -40,12 +52,34 @@ export default function FormPinjaman({
   readonly = false,
   isLoading = false,
 }: FormPinjamanProps) {
-  const { data: categoriesData } = useGetPinjamanCategoryListQuery({
-    page: 1,
-    paginate: 100,
-  });
+  const { data: categoriesData, isLoading: isCatLoading } =
+    useGetPinjamanCategoryListQuery({
+      page: 1,
+      paginate: 10,
+    });
   const categories: CategoryItem[] = (categoriesData?.data ??
     []) as CategoryItem[];
+
+  // Handler saat produk dipilih
+  const handleCategoryChange = (id: number | null) => {
+    // 1. Set ID Kategori
+    const updates: ExtendedForm = { ...form, pinjaman_category_id: id ?? undefined };
+
+    // 2. Cari data detail kategori berdasarkan ID
+    const selectedCategory = categories.find((c) => c.id === id);
+
+    if (selectedCategory) {
+      // 3. Auto-fill Bunga & Admin Fee dari API
+      updates.interest_rate = selectedCategory.interest_rate;
+      updates.admin_fee = selectedCategory.admin_fee;
+    } else {
+      // Reset jika di-clear (opsional, tergantung kebutuhan)
+      updates.interest_rate = undefined;
+      updates.admin_fee = undefined;
+    }
+
+    setForm(updates);
+  };
 
   // preset nominal (sama dengan SimpananForm; bebas kamu sesuaikan)
   const nominalPresets: number[] = [
@@ -68,88 +102,47 @@ export default function FormPinjaman({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* ========== KATEGORI PINJAMAN (UI sama SimpananForm) ========== */}
+        {/* ========== KATEGORI PEMBIAYAAN (DROPDOWN SEARCH) ========== */}
         <div className="md:col-span-2">
-          <Label className="mb-2 block">Kategori Pinjaman *</Label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {categories.map((c) => {
-              const active = form.pinjaman_category_id === c.id;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  disabled={readonly}
-                  onClick={() =>
-                    setForm({ ...form, pinjaman_category_id: c.id })
-                  }
-                  className={[
-                    "h-12 rounded-2xl border text-sm font-semibold shadow-sm transition-all",
-                    active
-                      ? "border-neutral-800 bg-neutral-900 text-white"
-                      : "border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50",
-                    "disabled:opacity-60",
-                  ].join(" ")}
-                >
-                  {c.name}
-                </button>
-              );
-            })}
+          <Label className="mb-2 block">Pembiayaan *</Label>
+          <Combobox<CategoryItem>
+            value={form.pinjaman_category_id ?? null}
+            onChange={handleCategoryChange}
+            data={categories}
+            isLoading={isCatLoading}
+            placeholder="Pilih atau cari kategori..."
+            getOptionLabel={(item) => item.name}
+            disabled={readonly}
+          />
+        </div>
+
+        {/* ========== NOMINAL PEMBIAYAAN (INPUT ONLY) ========== */}
+        <div className="md:col-span-2">
+          <Label className="mb-2 block">Nominal Pembiayaan *</Label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500">
+              Rp
+            </span>
+            <Input
+              type="text"
+              inputMode="numeric"
+              className="pl-9 h-12 rounded-lg text-lg font-medium"
+              value={formatRupiah(form.nominal ?? "")}
+              onChange={(e) => {
+                const raw = e.target.value;
+                const parsed = parseRupiah(raw);
+                setForm({
+                  ...form,
+                  nominal: raw === "" ? undefined : parsed,
+                });
+              }}
+              readOnly={readonly}
+              placeholder="Contoh: 10.000.000"
+            />
           </div>
         </div>
 
-        {/* ========== NOMINAL PINJAMAN (UI sama SimpananForm) ========== */}
-        <div className="md:col-span-2">
-          <Label className="mb-2 block">Pilih Nominal Pinjaman</Label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {nominalPresets.map((n) => {
-              const active = form.nominal === n;
-              return (
-                <button
-                  key={n}
-                  type="button"
-                  disabled={readonly}
-                  onClick={() => setForm({ ...form, nominal: n })}
-                  className={[
-                    "h-12 rounded-2xl border text-sm font-semibold shadow-sm transition-all",
-                    active
-                      ? "border-neutral-800 bg-neutral-900 text-white"
-                      : "border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50",
-                    "disabled:opacity-60",
-                  ].join(" ")}
-                >
-                  {n.toLocaleString("id-ID")}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-4">
-            <Label className="mb-2 block">Atau Masukkan Jumlah Lain</Label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500">
-                Rp
-              </span>
-              <Input
-                type="text"
-                inputMode="numeric"
-                className="pl-9 h-12 rounded-2xl"
-                value={formatRupiah(form.nominal ?? "")}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const parsed = parseRupiah(raw);
-                  setForm({
-                    ...form,
-                    nominal: raw === "" ? undefined : parsed,
-                  });
-                }}
-                readOnly={readonly}
-                placeholder="Contoh: 1.000.000"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ========== ANGGOTA (UI sama SimpananForm) ========== */}
+        {/* ========== ANGGOTA ========== */}
         <div className="flex flex-col gap-y-2">
           <Label>Anggota *</Label>
           <AnggotaPicker
@@ -161,14 +154,12 @@ export default function FormPinjaman({
           />
         </div>
 
-        {/* ===== Field lain tetap seperti semula (tidak diminta diubah UI) ===== */}
-
-        {/* Tanggal Pinjaman */}
+        {/* Tanggal Pembiayaan */}
         <div className="flex flex-col gap-y-2">
-          <Label>Tanggal Pinjaman *</Label>
+          <Label>Tanggal Pembiayaan *</Label>
           <Input
             type="datetime-local"
-            className="h-12 rounded-2xl"
+            className="h-10 rounded-md"
             value={
               form.date ? new Date(form.date).toISOString().slice(0, 16) : ""
             }
@@ -192,6 +183,7 @@ export default function FormPinjaman({
             }
             readOnly={readonly}
             placeholder="Masukkan tenor dalam bulan"
+            className="h-10"
           />
         </div>
 
@@ -211,6 +203,7 @@ export default function FormPinjaman({
             }
             readOnly={readonly}
             placeholder="Masukkan suku bunga"
+            className="h-10"
           />
         </div>
 
@@ -221,11 +214,10 @@ export default function FormPinjaman({
             value={form.description ?? ""}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             readOnly={readonly}
-            placeholder="Masukkan deskripsi pinjaman (opsional)"
+            placeholder="Masukkan deskripsi pembiayaan (opsional)"
             rows={3}
           />
         </div>
-
       </div>
 
       {!readonly && (

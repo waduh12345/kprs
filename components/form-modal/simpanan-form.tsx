@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,8 +22,10 @@ type Props = {
   categories: CategoryItem[];
   showAllCategories: boolean;
   setShowAllCategories: (v: boolean) => void;
-  anggota?: AnggotaItem[]; // passed from page
+  anggota?: AnggotaItem[];
   anggotaLoading?: boolean;
+  // Prop baru untuk menangani event ketik pencarian
+  onSearchAnggota?: (text: string) => void;
 };
 
 export default function FormSimpanan({
@@ -37,8 +40,11 @@ export default function FormSimpanan({
   setShowAllCategories,
   anggota = [],
   anggotaLoading = false,
+  onSearchAnggota,
 }: Props) {
-  // show first 6 categories, apabila lebih tampilkan tombol +N
+  // State lokal untuk mengontrol pesan "emptyText" pada combobox
+  const [searchText, setSearchText] = useState("");
+
   const visibleCategories = showAllCategories
     ? categories
     : categories.slice(0, 6);
@@ -60,25 +66,30 @@ export default function FormSimpanan({
         </Button>
       </div>
 
-      {/* CREATE MODE: pilih anggota + kategori (reference_id) */}
       {isCreateMode ? (
         <div className="space-y-4">
-          <div>
+          <div className="space-y-2">
             <Label>Anggota *</Label>
             <Combobox
               value={typeof form.user_id === "number" ? form.user_id : null}
               onChange={(v) => setForm({ ...form, user_id: v })}
-              onSearchChange={() => {}}
+              onSearchChange={(text) => {
+                setSearchText(text);
+                if (onSearchAnggota) onSearchAnggota(text);
+              }}
               data={anggota}
               isLoading={anggotaLoading}
-              placeholder="Pilih anggota"
+              placeholder="Ketik minimal 2 huruf..."
               getOptionLabel={(item) =>
                 `${item.name ?? "User"} (${item.email ?? "-"})`
               }
             />
+            <p className="text-[10px] text-muted-foreground">
+              * Cari nama anggota (minimal 2 huruf)
+            </p>
           </div>
 
-          <div>
+          <div className="space-y-2">
             <Label className="block">Produk Simpanan *</Label>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {visibleCategories.map((c) => {
@@ -125,13 +136,13 @@ export default function FormSimpanan({
             </div>
           </div>
 
-          <div className="text-sm text-neutral-600">
-            Pilih anggota dan kategori. Setelah klik <b>Simpan</b>, sistem akan
-            membuat wallet (simpan).
+          <div className="text-sm text-neutral-600 bg-neutral-50 p-3 rounded-md border border-neutral-100">
+            Pilih anggota dan kategori di atas, lalu klik <b>Simpan</b> untuk
+            membuat rekening simpanan baru.
           </div>
         </div>
       ) : (
-        // UPDATE / DETAIL mode: tampilkan editable fields (name, account_number, description)
+        // UPDATE / DETAIL mode
         <div className="grid grid-cols-1 gap-4">
           <div>
             <Label>Nama Simpanan</Label>
@@ -169,19 +180,21 @@ export default function FormSimpanan({
             />
           </div>
 
-          <div>
-            <Label>Anggota</Label>
-            <div className="text-sm text-neutral-700">
-              {form.user?.name ?? `User ID: ${form.user_id ?? "-"}`}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Anggota</Label>
+              <div className="text-sm text-neutral-900 font-medium bg-gray-50 p-2 rounded border">
+                {form.user?.name ?? `User ID: ${form.user_id ?? "-"}`}
+              </div>
             </div>
-          </div>
 
-          <div>
-            <Label>Kategori</Label>
-            <div className="text-sm text-neutral-700">
-              {form.reference
-                ? form.reference.name
-                : `ID: ${form.reference_id ?? "-"}`}
+            <div>
+              <Label>Kategori</Label>
+              <div className="text-sm text-neutral-900 font-medium bg-gray-50 p-2 rounded border">
+                {form.reference
+                  ? form.reference.name
+                  : `ID: ${form.reference_id ?? "-"}`}
+              </div>
             </div>
           </div>
         </div>
@@ -189,7 +202,7 @@ export default function FormSimpanan({
 
       {/* Actions */}
       {!readonly && (
-        <div className="pt-4 flex justify-end gap-2">
+        <div className="pt-4 flex justify-end gap-2 border-t border-gray-100 mt-4">
           <Button variant="outline" onClick={onCancel}>
             Batal
           </Button>
@@ -200,7 +213,7 @@ export default function FormSimpanan({
       )}
 
       {readonly && (
-        <div className="pt-4 flex justify-end">
+        <div className="pt-4 flex justify-end border-t border-gray-100 mt-4">
           <Button onClick={onCancel}>Tutup</Button>
         </div>
       )}

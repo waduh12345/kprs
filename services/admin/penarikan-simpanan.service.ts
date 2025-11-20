@@ -67,7 +67,7 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
     }),
 
     // ➕ Create Penarikan Simpanan
-    createPenarikanSimpanan: builder.mutation<
+    createPenarikanSimpananWallet: builder.mutation<
       PenarikanSimpanan,
       CreatePenarikanSimpananRequest
     >({
@@ -136,7 +136,7 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
         page,
         paginate,
         user_id,
-        searchBySpecific = "account_number",
+        searchBySpecific,
         search,
       }) => ({
         url: `/wallet`,
@@ -156,7 +156,7 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
     // ➕ Create Simpanan (Input)
     createSimpanan: builder.mutation<Wallet, CreateSimpananRequest>({
       query: (payload) => ({
-        url: `/wallet`,
+        url: `/wallet/withdrawals`,
         method: "POST",
         body: payload,
       }),
@@ -207,19 +207,42 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
     // 📜 Get Histories (paginated)
     getWalletHistories: builder.query<
       Paginated<WalletHistory>,
-      { page: number; paginate: number; wallet_id?: number }
+      { page: number; paginate: number; wallet_id?: number; start_date?: string; end_date?: string; search?: string; type?: string }
     >({
-      query: ({ page, paginate, wallet_id }) => ({
-        url: `/wallet/histories`,
-        method: "GET",
-        params: {
-          page,
-          paginate,
-          wallet_id,
-        },
+      query: ({ page, paginate, wallet_id, start_date, end_date, search, type }) => ({
+      url: `/wallet/histories`,
+      method: "GET",
+      params: {
+        page,
+        paginate,
+        wallet_id,
+        start_date,
+        end_date,
+        ...(search ? { search } : {}),
+        ...(type ? { type } : {}),
+      },
       }),
-      transformResponse: (response: ApiResponse<Paginated<WalletHistory>>) =>
-        response.data,
+      transformResponse: (response: ApiResponse<Paginated<WalletHistory>>) => {
+      // Map source_type based on type
+      const mappedData = response.data.data.map((history) => {
+        if (history.type === "debit") {
+        return {
+          ...history,
+          source_type: "App\\Models\\Simpanan\\Simpanan",
+        };
+        } else if (history.type === "credit") {
+        return {
+          ...history,
+          source_type: ["App\\Models\\Pinjaman\\Pinjaman"],
+        };
+        }
+        return history;
+      });
+      return {
+        ...response.data,
+        data: mappedData,
+      };
+      },
     }),
 
     // 🔁 Transfer
@@ -236,7 +259,7 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
 
 export const {
   useGetPenarikanSimpananListQuery,
-  useCreatePenarikanSimpananMutation,
+  useCreatePenarikanSimpananWalletMutation,
   useUpdatePenarikanSimpananMutation,
   useDeletePenarikanSimpananMutation,
   useUpdatePenarikanStatusMutation,

@@ -7,49 +7,59 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   FileText,
-  Calendar,
   FileDown,
   ListFilter,
   Users,
   Coins,
   DollarSign,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useGetWalletListQuery } from "@/services/admin/penarikan-simpanan.service";
 
-// --- DUMMY DATA & TYPES ---
+// --- INTERFACES SESUAI RESPONSE API ---
 
-interface NominatifSimpanan {
-  no_rekening: string;
-  anggota_id: string;
-  anggota_name: string;
-  produk: string;
-  saldo_akhir: number;
-  tipe_simpanan: "Pokok" | "Wajib" | "Sukarela" | "Berjangka";
+interface WalletReference {
+  id: number;
+  code: string;
+  name: string;
+  interest_rate: number;
+  description: string;
+  nominal: number;
+  status: number;
 }
 
-// Data Nominatif Simpanan Dummy
-const dummyNominatifData: NominatifSimpanan[] = [
-  { no_rekening: "POK-001", anggota_id: "A001", anggota_name: "Budi Santoso", produk: "Simpanan Pokok", saldo_akhir: 1000000, tipe_simpanan: "Pokok" },
-  { no_rekening: "WJB-001", anggota_id: "A001", anggota_name: "Budi Santoso", produk: "Simpanan Wajib", saldo_akhir: 2500000, tipe_simpanan: "Wajib" },
-  { no_rekening: "SWK-001", anggota_id: "A001", anggota_name: "Budi Santoso", produk: "Simpanan Sukarela", saldo_akhir: 15000000, tipe_simpanan: "Sukarela" },
+interface WalletUser {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+}
 
-  { no_rekening: "POK-002", anggota_id: "A002", anggota_name: "Siti Rahayu", produk: "Simpanan Pokok", saldo_akhir: 1000000, tipe_simpanan: "Pokok" },
-  { no_rekening: "WJB-002", anggota_id: "A002", anggota_name: "Siti Rahayu", produk: "Simpanan Wajib", saldo_akhir: 3000000, tipe_simpanan: "Wajib" },
-  { no_rekening: "BER-001", anggota_id: "A002", anggota_name: "Siti Rahayu", produk: "Simpanan Berjangka 1 Tahun", saldo_akhir: 50000000, tipe_simpanan: "Berjangka" },
-
-  { no_rekening: "SWK-003", anggota_id: "A003", anggota_name: "Joko Widodo", produk: "Simpanan Sukarela", saldo_akhir: 800000, tipe_simpanan: "Sukarela" },
-  { no_rekening: "WJB-003", anggota_id: "A003", anggota_name: "Joko Widodo", produk: "Simpanan Wajib", saldo_akhir: 1500000, tipe_simpanan: "Wajib" },
-];
-
-const totalSaldoGlobal = dummyNominatifData.reduce((sum, item) => sum + item.saldo_akhir, 0);
-const totalAnggotaUnik = new Set(dummyNominatifData.map(d => d.anggota_id)).size;
+interface WalletData {
+  id: number;
+  user_id: number;
+  name: string;
+  account_number: string;
+  description: string;
+  balance: number;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+  reference_type: string;
+  reference_id: number;
+  reference: WalletReference;
+  user: WalletUser;
+}
 
 // --- HELPER FUNCTIONS ---
 
 const formatRupiah = (number: number) => {
-  if (isNaN(number) || number === null || number === undefined) return '0';
+  if (isNaN(number) || number === null || number === undefined) return 'Rp 0';
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
@@ -62,93 +72,134 @@ const formatRupiah = (number: number) => {
 export default function LaporanNominatifSimpananPage() {
   const today = new Date().toISOString().substring(0, 10);
   
+  // State
   const [cutOffDate, setCutOffDate] = useState(today);
   const [produkFilter, setProdukFilter] = useState("all");
   const [query, setQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
-  // --- FILTERING ---
+  // --- FETCH DATA FROM API ---
+  const { data: apiResponse, isLoading, isFetching, refetch } = useGetWalletListQuery({
+    page: currentPage,
+    paginate: itemsPerPage,
+    search: query,
+  });
+
+  // Extract Data
+  const walletData = (apiResponse as { data: WalletData[] } | undefined)?.data || [];
+  const meta = {
+    last_page: (apiResponse as any)?.last_page ?? 1,
+    current_page: (apiResponse as any)?.current_page ?? 1,
+    total: (apiResponse as any)?.total ?? 0,
+    per_page: (apiResponse as any)?.per_page ?? itemsPerPage,
+    from: (apiResponse as any)?.from ?? 0,
+    to: (apiResponse as any)?.to ?? 0,
+    prev_page_url: (apiResponse as any)?.prev_page_url ?? null,
+    next_page_url: (apiResponse as any)?.next_page_url ?? null,
+  };
+
+  // --- FILTERING & MAPPING (Client-Side untuk Produk) ---
   const filteredNominatif = useMemo(() => {
-    let arr = dummyNominatifData;
+    let arr = walletData;
 
-    // 1. Filter Query Pencarian
-    if (query.trim()) {
-        const q = query.toLowerCase();
-        arr = arr.filter((it) =>
-          [it.anggota_name, it.no_rekening, it.anggota_id].some(
-            (f) => f?.toLowerCase?.().includes?.(q)
-          )
-        );
-    }
-
-    // 2. Filter Produk Simpanan
+    // Filter Produk Simpanan (Berdasarkan nama reference)
     if (produkFilter !== "all") {
-      arr = arr.filter((it) => it.tipe_simpanan === produkFilter);
+      arr = arr.filter((it) => 
+        it.reference?.name?.toLowerCase().includes(produkFilter.toLowerCase())
+      );
     }
     
-    // Anggap data dummy sudah disaring berdasarkan cutOffDate (simulasi)
     return arr;
-  }, [dummyNominatifData, query, produkFilter]);
+  }, [walletData, produkFilter]);
 
-  // --- SUMMARY BERDASARKAN FILTER ---
+  // --- SUMMARY BERDASARKAN HALAMAN INI ---
   const summaryFiltered = useMemo(() => {
-    const totalSaldo = filteredNominatif.reduce((sum, item) => sum + item.saldo_akhir, 0);
+    const totalSaldo = filteredNominatif.reduce((sum, item) => sum + item.balance, 0);
     const totalRekening = filteredNominatif.length;
-    const totalAnggota = new Set(filteredNominatif.map(d => d.anggota_id)).size;
+    // Hitung anggota unik di halaman ini
+    const totalAnggota = new Set(filteredNominatif.map(d => d.user_id)).size;
     return { totalSaldo, totalRekening, totalAnggota };
   }, [filteredNominatif]);
 
-  // --- HANDLER EXPORT ---
+  // --- HANDLER ---
   const handleExportExcel = () => {
     Swal.fire({
       icon: "info",
       title: "Export Laporan Nominatif",
-      text: `Mengekspor data Nominatif Simpanan per tanggal ${cutOffDate}. (Simulasi)`,
+      text: `Fitur export data per tanggal ${cutOffDate} sedang dalam pengembangan.`,
       confirmButtonText: "Oke",
     });
   };
+
+  const handleNextPage = () => {
+    if (meta?.next_page_url) setCurrentPage((prev) => prev + 1);
+  };
+
+  const handlePrevPage = () => {
+    if (meta?.prev_page_url && currentPage > 1) setCurrentPage((prev) => prev - 1);
+  };
   
   // --- RENDERING TABEL NOMINATIF ---
-  const renderNominatifTable = (data: NominatifSimpanan[]) => {
+  const renderNominatifTable = () => {
+    if (isLoading || isFetching) {
+      return (
+        <div className="flex flex-col items-center justify-center py-10">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+            <p className="text-gray-500">Memuat data nominatif...</p>
+        </div>
+      );
+    }
+
     return (
       <div className="p-0 overflow-x-auto border rounded-lg">
         <table className="min-w-full text-sm">
           <thead className="sticky top-0 bg-muted text-left">
             <tr>
-              <th className="px-4 py-3 w-[150px]">No. Rekening</th>
+              <th className="px-4 py-3 w-[180px]">No. Rekening</th>
               <th className="px-4 py-3">Nama Anggota (ID)</th>
-              <th className="px-4 py-3 w-[150px]">Produk</th>
-              <th className="px-4 py-3 text-right w-[180px]">Saldo Akhir ({cutOffDate})</th>
+              <th className="px-4 py-3 w-[200px]">Produk</th>
+              <th className="px-4 py-3 text-right w-[180px]">Saldo Akhir</th>
             </tr>
           </thead>
           <tbody>
-            {data.length === 0 ? (
+            {filteredNominatif.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center p-4">
-                    Tidak ada data nominatif yang ditemukan untuk filter yang dipilih.
+                  <td colSpan={4} className="text-center p-8 text-gray-500">
+                    Tidak ada data nominatif yang ditemukan.
                   </td>
                 </tr>
             ) : (
-                data.map((item, index) => (
-                    <tr key={index} className="border-t hover:bg-gray-50">
-                        <td className="px-4 py-2 font-mono text-xs">{item.no_rekening}</td>
-                        <td className="px-4 py-2">
-                            <span className="font-semibold">{item.anggota_name}</span><br/>
-                            <span className="text-xs text-gray-600">ID: {item.anggota_id}</span>
+                filteredNominatif.map((item) => (
+                    <tr key={item.id} className="border-t hover:bg-gray-50">
+                        <td className="px-4 py-3 font-mono text-xs font-medium text-gray-700">
+                            {item.account_number}
                         </td>
-                        <td className="px-4 py-2">
-                            {item.produk} <Badge variant="secondary" className="ml-1">{item.tipe_simpanan}</Badge>
+                        <td className="px-4 py-3">
+                            <span className="font-semibold text-gray-900">{item.user?.name || "Unknown"}</span><br/>
+                            <span className="text-xs text-gray-500">ID Anggota: {item.user_id}</span>
                         </td>
-                        <td className="px-4 py-2 text-right font-bold text-primary">
-                            {formatRupiah(item.saldo_akhir)}
+                        <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                                <span>{item.reference?.name || "Simpanan Umum"}</span>
+                                <Badge variant="outline" className="text-[10px]">
+                                    {item.reference?.code}
+                                </Badge>
+                            </div>
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-primary text-base">
+                            {formatRupiah(item.balance)}
                         </td>
                     </tr>
                 ))
             )}
           </tbody>
-          <tfoot className="bg-gray-200 font-extrabold sticky bottom-0">
+          <tfoot className="bg-gray-100 font-extrabold sticky bottom-0 border-t-2 border-gray-300">
               <tr>
-                  <td colSpan={3} className="px-4 py-3 text-right">TOTAL SALDO SIMPANAN (SESUAI FILTER)</td>
-                  <td className="px-4 py-3 text-right text-lg text-primary">
+                  <td colSpan={3} className="px-4 py-3 text-right uppercase text-gray-600 text-xs">
+                    Total Saldo (Halaman Ini)
+                  </td>
+                  <td className="px-4 py-3 text-right text-lg text-green-700">
                     {formatRupiah(summaryFiltered.totalSaldo)}
                   </td>
               </tr>
@@ -164,10 +215,12 @@ export default function LaporanNominatifSimpananPage() {
         <FileText className="h-6 w-6 text-primary" />
         Laporan Nominatif Simpanan
       </h2>
-      <p className="text-gray-600">Daftar lengkap saldo simpanan seluruh anggota per tanggal *cut-off*.</p>
+      <p className="text-gray-600">
+        Daftar saldo simpanan anggota. Data saldo yang ditampilkan adalah posisi saldo saat ini (Realtime).
+      </p>
 
-      {/* --- KARTU KONTROL FILTER & SUMMARY GLOBAL --- */}
-      <Card className="border-t-4 border-indigo-500">
+      {/* --- KARTU KONTROL FILTER --- */}
+      <Card className="border-t-4 border-indigo-500 shadow-sm">
         <CardHeader>
           <CardTitle className="text-xl flex items-center gap-2 text-indigo-600">
             <ListFilter className="h-5 w-5" /> Kontrol Laporan
@@ -175,18 +228,19 @@ export default function LaporanNominatifSimpananPage() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
           <div className="space-y-2 col-span-1">
-            <Label htmlFor="cut_off_date">Tanggal Saldo (Cut-Off)</Label>
+            <Label htmlFor="cut_off_date">Tanggal Laporan</Label>
             <Input
               id="cut_off_date"
               type="date"
               value={cutOffDate}
               onChange={(e) => setCutOffDate(e.target.value)}
+              className="bg-white"
             />
           </div>
           <div className="space-y-2 col-span-1">
             <Label htmlFor="produk_filter">Filter Produk</Label>
             <Select onValueChange={setProdukFilter} value={produkFilter}>
-                <SelectTrigger id="produk_filter">
+                <SelectTrigger id="produk_filter" className="bg-white">
                     <SelectValue placeholder="Semua Produk" />
                 </SelectTrigger>
                 <SelectContent>
@@ -200,13 +254,18 @@ export default function LaporanNominatifSimpananPage() {
           </div>
           <div className="space-y-2 col-span-2">
             <Label htmlFor="search_query">Cari Rekening / Anggota</Label>
-            <Input
-              id="search_query"
-              placeholder="No. Rekening, Nama Anggota, atau ID"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="h-10"
-            />
+            <div className="flex gap-2">
+                <Input
+                  id="search_query"
+                  placeholder="No. Rekening / Nama..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="h-10 bg-white"
+                />
+                <Button onClick={() => refetch()} disabled={isLoading}>
+                  Cari
+                </Button>
+            </div>
           </div>
            <div className="col-span-1">
             <Button
@@ -214,46 +273,80 @@ export default function LaporanNominatifSimpananPage() {
                 className="w-full bg-red-600 hover:bg-red-700 h-10"
             >
                 <FileDown className="mr-2 h-4 w-4" />
-                Export Nominatif
+                Export
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* --- SUMMARY GLOBAL & FILTERED --- */}
-      <Card className="p-4 bg-yellow-50 border border-yellow-300">
-        <div className="grid grid-cols-3 gap-6 font-semibold">
+      {/* --- SUMMARY CARD --- */}
+      <Card className="p-4 bg-white border-l-4 border-yellow-400 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-semibold">
             <div className="text-gray-700">
-                <p className="text-sm">Total Anggota Terlibat (Unik)</p>
-                <p className="text-xl font-bold flex items-center gap-1"><Users className="h-5 w-5"/> {summaryFiltered.totalAnggota} Anggota</p>
+                <p className="text-xs text-gray-500 uppercase">Anggota (Halaman Ini)</p>
+                <p className="text-xl font-bold flex items-center gap-2">
+                    <Users className="h-5 w-5 text-yellow-600"/> {summaryFiltered.totalAnggota} 
+                </p>
             </div>
             <div className="text-gray-700">
-                <p className="text-sm">Jumlah Rekening Simpanan (Sesuai Filter)</p>
-                <p className="text-xl font-bold flex items-center gap-1"><Coins className="h-5 w-5"/> {summaryFiltered.totalRekening} Rekening</p>
+                <p className="text-xs text-gray-500 uppercase">Rekening (Halaman Ini)</p>
+                <p className="text-xl font-bold flex items-center gap-2">
+                    <Coins className="h-5 w-5 text-yellow-600"/> {summaryFiltered.totalRekening}
+                </p>
             </div>
             <div className="text-primary">
-                <p className="text-sm">TOTAL SALDO SIMPANAN GLOBAL (SEMUA DATA DUMMY)</p>
-                <p className="text-xl font-extrabold flex items-center gap-1"><DollarSign className="h-5 w-5"/> {formatRupiah(totalSaldoGlobal)}</p>
+                <p className="text-xs text-gray-500 uppercase">Total Saldo (Halaman Ini)</p>
+                <p className="text-2xl font-extrabold flex items-center gap-2 text-green-700">
+                    <DollarSign className="h-6 w-6"/> {formatRupiah(summaryFiltered.totalSaldo)}
+                </p>
             </div>
         </div>
       </Card>
 
-
-      {/* --- TABEL NOMINATIF SIMPANAN --- */}
+      {/* --- TABEL NOMINATIF --- */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <FileText className="h-5 w-5" /> Detail Data Nominatif ({summaryFiltered.totalRekening} Rekening)
+          <CardTitle className="text-lg flex items-center justify-between">
+            <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5" /> 
+                Data Nominatif
+            </div>
+            <div className="text-sm font-normal text-gray-500">
+                Total Data: {meta?.total || 0}
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {renderNominatifTable(filteredNominatif)}
+          {renderNominatifTable()}
+          
+          {/* Pagination Control */}
+          {meta && (
+             <div className="flex items-center justify-between px-4 py-4 border-t bg-gray-50">
+               <div className="text-sm text-gray-500">
+                 Menampilkan <b>{meta.from || 0}</b> sampai <b>{meta.to || 0}</b> dari <b>{meta.total || 0}</b> data
+               </div>
+               <div className="flex gap-2">
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   onClick={handlePrevPage}
+                   disabled={!meta.prev_page_url || isLoading}
+                 >
+                   <ChevronLeft className="h-4 w-4 mr-1" /> Prev
+                 </Button>
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   onClick={handleNextPage}
+                   disabled={!meta.next_page_url || isLoading}
+                 >
+                   Next <ChevronRight className="h-4 w-4 ml-1" />
+                 </Button>
+               </div>
+             </div>
+          )}
         </CardContent>
       </Card>
-      
-      <p className="text-xs text-gray-500 mt-4">
-        *Laporan Nominatif adalah daftar saldo akhir simpanan anggota yang menjadi kewajiban Koperasi per tanggal *cut-off* yang ditentukan.
-      </p>
     </div>
   );
 }

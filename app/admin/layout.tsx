@@ -368,24 +368,29 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       href: "#",
       children: [
         {
-          id: "master/coa",
+          id: "konfigurasi/coa",
           label: "Chart of Accounts",
           href: "/admin/master/coas",
         },
         {
-          id: "master/kode-transaksi",
+          id: "konfigurasi/kode-transaksi",
           label: "Kode Transaksi",
           href: "/admin/master/kode-transaksi",
         },
         {
-          id: "master/produk-simpanan",
+          id: "konfigurasi/produk-simpanan",
           label: "Produk Simpanan",
-          href: "/admin/master/produk-simpanan",
+          href: "/admin/konfigurasi/simpanan",
         },
         {
-          id: "master/produk-pinjaman",
-          label: "Produk Pinjaman",
-          href: "/admin/master/produk-pinjaman",
+          id: "konfigurasi/produk-simpanan-berjangka",
+          label: "Produk Simpanan Berjangka",
+          href: "/admin/konfigurasi/simpanan-berjangka",
+        },
+        {
+          id: "konfigurasi/produk-pembiayaan",
+          label: "Produk Pembiayaan",
+          href: "/admin/konfigurasi/pembiayaan",
         },
         {
           id: "konfigurasi/pengelola",

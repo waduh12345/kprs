@@ -22,7 +22,7 @@ import {
 } from "@/services/admin/pinjaman.service";
 import { useCreatePaymentMutation } from "@/services/installment.service";
 import { Pinjaman } from "@/types/admin/pinjaman";
-import FormPinjaman from "@/components/form-modal/pinjaman-form";
+import FormPembiayaan from "@/components/form-modal/pinjaman-form";
 import { useGetPinjamanCategoryListQuery } from "@/services/master/pinjaman-category.service";
 import { useGetAnggotaListQuery } from "@/services/koperasi-service/anggota.service";
 import {
@@ -80,12 +80,12 @@ export default function PinjamanAnggotaPage() {
   // Get categories and users for filters
   const { data: categoriesData } = useGetPinjamanCategoryListQuery({
     page: 1,
-    paginate: 100,
+    paginate: 10,
   });
 
   const { data: usersData } = useGetAnggotaListQuery({
     page: 1,
-    paginate: 100,
+    paginate: 20,
     status: 1,
   });
 
@@ -414,6 +414,11 @@ export default function PinjamanAnggotaPage() {
         label: "Ditolak",
         className: "bg-red-100 text-red-800",
       },
+      "3": {
+        variant: "success" as const,
+        label: "Realisasi",
+        className: "bg-green-200 text-green-800",
+      },
       pending: {
         variant: "secondary" as const,
         label: "Pending",
@@ -544,8 +549,9 @@ export default function PinjamanAnggotaPage() {
             <thead className="bg-muted text-left">
               <tr>
                 <th className="px-4 py-2">Aksi</th>
+                <th className="px-4 py-2">Kode</th>
                 <th className="px-4 py-2">Anggota</th>
-                <th className="px-4 py-2">Kategori</th>
+                <th className="px-4 py-2">Produk</th>
                 <th className="px-4 py-2">Nominal</th>
                 <th className="px-4 py-2">Tenor</th>
                 <th className="px-4 py-2">Suku Bunga</th>
@@ -574,42 +580,60 @@ export default function PinjamanAnggotaPage() {
                         handleDetail={() => {
                           handleDetail(item);
                         }}
-                        handleEdit={() => {
-                          handleEdit(item);
-                        }}
-                        handleDelete={() => {
-                          handleDelete(item);
-                        }}
+                        handleEdit={
+                          (String(item.status) === "0" ||
+                          item.status === "pending" ||
+                          Number(item.status) === 0)
+                          ? () => {
+                            handleEdit(item);
+                            }
+                          : undefined
+                        }
+                        handleDelete={
+                          (String(item.status) === "0" ||
+                          item.status === "pending" ||
+                          Number(item.status) === 0)
+                          ? () => {
+                            handleDelete(item);
+                            }
+                          : undefined
+                        }
                         additionalActions={
                           <>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    handlePaymentHistory(item);
-                                  }}
-                                >
-                                  <CreditCard className="size-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>History Pembayaran</p>
-                              </TooltipContent>
-                            </Tooltip>
+                            {(String(item.status) !== "0" &&
+                              String(item.status) !== "-1" &&
+                              item.status !== "pending" &&
+                              Number(item.status) !== 0 &&
+                              Number(item.status) !== -1) && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      handlePaymentHistory(item);
+                                    }}
+                                  >
+                                    <CreditCard className="size-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>History Pembayaran</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
 
                             {(String(item.status) === "0" ||
+                              String(item.status) === "-1" ||
                               item.status === "pending" ||
-                              Number(item.status) === 0) && (
+                              Number(item.status) === 0 ||
+                              Number(item.status) === -1) && (
                               <>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
                                       size="sm"
-                                      onClick={() =>
-                                        handleStatusUpdate(item, "1")
-                                      }
+                                      onClick={() => handleStatusUpdate(item, "1")}
                                       className="bg-green-600 hover:bg-green-700"
                                     >
                                       <CheckCircle className="size-4" />
@@ -624,9 +648,7 @@ export default function PinjamanAnggotaPage() {
                                   <TooltipTrigger asChild>
                                     <Button
                                       size="sm"
-                                      onClick={() =>
-                                        handleStatusUpdate(item, "2")
-                                      }
+                                      onClick={() => handleStatusUpdate(item, "2")}
                                       className="bg-red-600 hover:bg-red-700"
                                     >
                                       <XCircle className="size-4" />
@@ -642,6 +664,7 @@ export default function PinjamanAnggotaPage() {
                         }
                       />
                     </td>
+                    <td className="px-4 py-2">{item.reference}</td>
                     <td className="px-4 py-2">
                       <div>
                         <div className="font-medium">
@@ -652,7 +675,7 @@ export default function PinjamanAnggotaPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2 min-w-[250px]">
                       <div>
                         <div className="font-medium">
                           {getCategoryName(item.pinjaman_category_id)}
@@ -706,7 +729,7 @@ export default function PinjamanAnggotaPage() {
       {/* Pinjaman Form Modal */}
       {isOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <FormPinjaman
+          <FormPembiayaan
             form={form}
             setForm={setForm}
             onCancel={() => {

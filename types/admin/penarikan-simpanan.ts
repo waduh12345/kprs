@@ -42,7 +42,7 @@ export interface PenarikanSimpananResponse {
 }
 
 export interface CreatePenarikanSimpananRequest {
-  wallet_id: number | null;
+  wallet_id?: number | null;
   user_id: number | null;
   bank_name: string;
   bank_account_name: string;
