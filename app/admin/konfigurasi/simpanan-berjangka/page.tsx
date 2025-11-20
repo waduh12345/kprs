@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import useModal from "@/hooks/use-modal";
 import {
-  useGetSimpananBerjangkaListQuery,
-  useCreateSimpananBerjangkaMutation,
-  useUpdateSimpananBerjangkaMutation,
-  useDeleteSimpananBerjangkaMutation,
-} from "@/services/admin/konfigurasi/simpanan-berjangka.service";
+  useGetSimpananBerjangkaCategoriesListQuery,
+  useGetSimpananBerjangkaCategoryByIdQuery,
+  useCreateSimpananBerjangkaCategoryMutation,
+  useUpdateSimpananBerjangkaCategoryMutation,
+  useDeleteSimpananBerjangkaCategoryMutation,
+} from "@/services/admin/konfigurasi/simpanan-berjangka-kategori.service";
 import { SimpananBerjangka } from "@/types/admin/konfigurasi/simpanan-berjangka";
 import FormSimpananBerjangka from "@/components/form-modal/admin/konfigurasi/simpanan-berjangka-form";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +31,7 @@ export default function PinjamanKategoriPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [query, setQuery] = useState("");
 
-  const { data, isLoading, refetch } = useGetSimpananBerjangkaListQuery({
+  const { data, isLoading, refetch } = useGetSimpananBerjangkaCategoriesListQuery({
     page: currentPage,
     paginate: itemsPerPage,
   });
@@ -39,10 +40,10 @@ export default function PinjamanKategoriPage() {
   const lastPage = useMemo(() => data?.last_page || 1, [data]);
 
   const [create, { isLoading: isCreating }] =
-    useCreateSimpananBerjangkaMutation();
+    useCreateSimpananBerjangkaCategoryMutation();
   const [update, { isLoading: isUpdating }] =
-    useUpdateSimpananBerjangkaMutation();
-  const [deleteSimpananBerjangka] = useDeleteSimpananBerjangkaMutation();
+    useUpdateSimpananBerjangkaCategoryMutation();
+  const [deleteSimpananBerjangka] = useDeleteSimpananBerjangkaCategoryMutation();
 
   const handleSubmit = async () => {
     try {

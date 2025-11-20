@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,67 +12,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  HistoryIcon,
-  PlusCircle,
-  Clock,
-  Coins,
-  FileDown,
-} from "lucide-react";
+import { HistoryIcon, PlusCircle, Clock, FileDown } from "lucide-react";
 import Swal from "sweetalert2";
 
-// --- DUMMY DATA & TYPES ---
-
-interface SimpananBerjangka {
-  id: string;
-  anggota_name: string;
-  no_rekening: string;
-  produk: string;
-  jangka_waktu: number; // bulan
-  nominal_awal: number;
-  nominal_sekarang: number;
-  status: "Aktif" | "Jatuh Tempo" | "Tutup";
-  tanggal_mulai: string;
-}
-
-const initialDummyData: SimpananBerjangka[] = [
-  {
-    id: "SB001",
-    anggota_name: "Budi Santoso",
-    no_rekening: "12345-001",
-    produk: "Simjaka Emas",
-    jangka_waktu: 12,
-    nominal_awal: 5000000,
-    nominal_sekarang: 5250000,
-    status: "Aktif",
-    tanggal_mulai: "2024-01-15",
-  },
-  {
-    id: "SB002",
-    anggota_name: "Siti Rahayu",
-    no_rekening: "12345-002",
-    produk: "Simjaka Prioritas",
-    jangka_waktu: 24,
-    nominal_awal: 10000000,
-    nominal_sekarang: 10000000,
-    status: "Aktif",
-    tanggal_mulai: "2023-11-20",
-  },
-  {
-    id: "SB003",
-    anggota_name: "Joko Widodo",
-    no_rekening: "12345-003",
-    produk: "Simjaka Reguler",
-    jangka_waktu: 6,
-    nominal_awal: 2000000,
-    nominal_sekarang: 2000000,
-    status: "Jatuh Tempo",
-    tanggal_mulai: "2024-04-01",
-  },
-];
-
-// --- HELPER FUNCTIONS ---
-
+// helper format
 const formatRupiah = (number: number) => {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -81,118 +24,267 @@ const formatRupiah = (number: number) => {
   }).format(number);
 };
 
-const statusVariant = (status: SimpananBerjangka["status"]): "success" | "destructive" | "default" | "secondary" => {
+// Pastikan tipe status di SimpananBerjangka sudah diperbarui di file types
+type SimpananBerjangkaStatus = "Aktif" | "Jatuh Tempo" | "Tidak Aktif";
+
+// Gunakan tipe SimpananBerjangka dari file types
+// Asumsi: SimpananBerjangka dari types/admin/simpanan/simpanan-berjangka.ts
+import { SimpananBerjangka } from "@/types/admin/simpanan/simpanan-berjangka";
+
+const statusVariant = (
+  status: SimpananBerjangkaStatus
+): "success" | "destructive" | "default" | "secondary" => {
   if (status === "Aktif") return "success";
-  if (status === "Tutup") return "destructive";
-  if (status === "Jatuh Tempo") return "default";
+  if (status === "Jatuh Tempo") return "default"; // Atau warna lain
+  if (status === "Tidak Aktif") return "destructive"; // Atau warna lain
   return "secondary";
 };
 
-// --- KOMPONEN UTAMA ---
+// --- NEW: import service hook untuk fetching (pastikan path sesuai projectmu) ---
+import { useGetSimpananBerjangkaListQuery } from "@/services/admin/simpanan/simpanan-berjangka.service";
+import { displayDate } from "@/lib/format-utils";
+// import form component (modal)
+import SimpananBerjangkaForm from "@/components/form-modal/simpanan-berjangka-form";
+
+// New Interface untuk data yang sudah di-map agar sesuai tabel
+interface SimpananBerjangkaUIData {
+  id: number; // ID asli
+  reference: string;
+  user_name: string;
+  category_name: string;
+  nominal: number;
+  term_months: number;
+  date: string; // Tanggal Mulai
+  nominal_current: number; // Nominal Saat Ini
+  status: SimpananBerjangkaStatus; // Label status yang sudah diolah
+}
 
 export default function SimpananBerjangkaPage() {
   const router = useRouter();
 
-  const [dataSimjaka, setDataSimjaka] = useState<SimpananBerjangka[]>(initialDummyData);
+  // state untuk data yang ditampilkan di UI (menggantikan dummy)
+  const [dataSimjaka, setDataSimjaka] = useState<SimpananBerjangkaUIData[]>([]);
+
+  // modal / editing state
+  const [showForm, setShowForm] = useState<boolean>(false);
+  const [editingId, setEditingId] = useState<number | undefined>(undefined);
+
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<
+    SimpananBerjangkaStatus | "all"
+  >("all");
+  const modalRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    // jika modal terbuka -> lock body scroll dan fokus input pertama
+    if (showForm) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+
+      // fokus ke elemen input/select/textarea/button pertama di modal
+      requestAnimationFrame(() => {
+        const el = modalRef.current?.querySelector<HTMLElement>(
+          "input,select,textarea,button"
+        );
+        el?.focus();
+      });
+
+      // handle Esc key
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setShowForm(false);
+          setEditingId(undefined);
+        }
+      };
+      window.addEventListener("keydown", onKey);
+
+      return () => {
+        window.removeEventListener("keydown", onKey);
+        document.body.style.overflow = prev;
+      };
+    }
+    // cleanup jika modal tidak terbuka tidak perlu
+    return;
+  }, [showForm]);
+
+  // fetch dari API (pakai hook yang sudah ada)
+  const {
+    data: apiResp,
+    isLoading,
+    refetch,
+  } = useGetSimpananBerjangkaListQuery({
+    paginate: 10,
+    page: 1,
+    search: "",
+  });
+
+  // Helper: extract array dari berbagai bentuk respons API
+  function extractItems(source: unknown): SimpananBerjangka[] {
+    if (!source) return [];
+    // Jika respons berbentuk { data: { data: [...] } }
+    if (typeof source === "object" && source !== null && "data" in source) {
+      const lvl1 = (source as Record<string, unknown>).data;
+      if (typeof lvl1 === "object" && lvl1 !== null && "data" in lvl1) {
+        const lvl2 = (lvl1 as Record<string, unknown>).data;
+        if (Array.isArray(lvl2)) return lvl2 as SimpananBerjangka[];
+      }
+    }
+    // Jika respons berbentuk { data: [...] } (kurang umum untuk paginasi)
+    if (
+      typeof source === "object" &&
+      source !== null &&
+      Array.isArray(source)
+    ) {
+      return source as SimpananBerjangka[];
+    }
+    return [];
+  }
+
+  // Helper: map satu item respons -> bentuk UI SimpananBerjangkaUIData
+  function mapToUi(item: SimpananBerjangka): SimpananBerjangkaUIData | null {
+    if (typeof item.id !== "number") return null;
+
+    // map status: gunakan field `status` yang dikirim backend (0, 1, 2)
+    // 0: Tidak Aktif (bisa juga Pending/Selesai), 1: Aktif, 2: Jatuh Tempo (asumsi)
+    let statusLabel: SimpananBerjangkaStatus;
+    if (item.status === 1) {
+      statusLabel = "Aktif";
+    } else if (item.status === 2) {
+      statusLabel = "Jatuh Tempo";
+    } else {
+      statusLabel = "Tidak Aktif"; // Asumsi status 0 atau lainnya adalah Tidak Aktif
+    }
+
+    // Fallback: Jika ada data dari payment dan paid_at null, bisa dianggap Pending/Tidak Aktif.
+
+    return {
+      id: item.id,
+      reference: item.reference || "-",
+      user_name: item.user_name || "-",
+      category_name: item.category_name || "-",
+      nominal: item.nominal || 0,
+      term_months: item.term_months || 0,
+      date: item.date || "-",
+      nominal_current: item.nominal || 0, // Dalam contoh respons, hanya ada `nominal`. Diasumsikan `nominal` adalah `nominal_awal` dan juga `nominal_saat_ini` jika tidak ada field lain.
+      status: statusLabel,
+    };
+  }
+
+  // ketika apiResp berubah -> ambil dan map ke state UI
+  useEffect(() => {
+    const items = extractItems(apiResp);
+    const mapped: SimpananBerjangkaUIData[] = items
+      .map((it) => mapToUi(it))
+      .filter((x): x is SimpananBerjangkaUIData => x !== null);
+    setDataSimjaka(mapped);
+  }, [apiResp]);
 
   const filteredList = useMemo(() => {
     let arr = dataSimjaka;
-    
+
     // Filter Status
     if (statusFilter !== "all") {
       arr = arr.filter((it) => it.status === statusFilter);
     }
-      
+
     // Filter Query Pencarian
     if (!query.trim()) return arr;
     const q = query.toLowerCase();
     return arr.filter((it) =>
-      [it.anggota_name, it.no_rekening, it.produk].some(
-        (f) => f?.toLowerCase?.().includes?.(q)
+      [it.user_name, it.reference, it.category_name].some((f) =>
+        f?.toLowerCase?.().includes?.(q)
       )
     );
   }, [dataSimjaka, query, statusFilter]);
 
-  // --- HANDLERS DUMMY ---
-
-  const handleEdit = (item: SimpananBerjangka) => {
-    Swal.fire({
-      icon: "info",
-      title: "Ubah Data",
-      text: `Anda akan mengubah data Simpanan Berjangka untuk ${item.anggota_name} (${item.no_rekening}). (Simulasi)`,
-    });
-    // Di implementasi nyata, arahkan ke halaman edit: router.push(`/admin/simpanan-berjangka/edit/${item.id}`)
+  // --- HANDLERS ---
+  const handleEdit = (item: SimpananBerjangkaUIData) => {
+    // buka modal dan set id untuk mode edit
+    setEditingId(item.id);
+    setShowForm(true);
   };
 
-  const handleDelete = async (item: SimpananBerjangka) => {
+  const handleDelete = async (item: SimpananBerjangkaUIData) => {
     const confirm = await Swal.fire({
       title: "Yakin hapus data?",
-      text: `Simpanan Berjangka ${item.no_rekening} (${item.anggota_name}) akan dihapus.`,
+      text: `Simpanan Berjangka ${item.reference} (${item.user_name}) akan dihapus.`,
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Hapus",
+      // ... (style tambahan jika ada)
     });
     if (confirm.isConfirmed) {
-      // Hapus dari state (simulasi)
+      // Di sini harusnya panggil API delete, untuk demo kita hapus local state
       setDataSimjaka((prev) => prev.filter((d) => d.id !== item.id));
       Swal.fire("Berhasil", "Data Simpanan Berjangka dihapus", "success");
     }
   };
 
-  const handleTambahModal = async (item: SimpananBerjangka) => {
+  const handleTambahModal = async (item: SimpananBerjangkaUIData) => {
     const { value: nominal } = await Swal.fire({
-        title: `Tambah Modal Simjaka`,
-        text: `Anggota: ${item.anggota_name} (${item.no_rekening})`,
-        input: 'number',
-        inputLabel: 'Masukkan Nominal Tambah Modal (IDR)',
-        inputValue: '',
-        showCancelButton: true,
-        confirmButtonText: 'Proses Tambah Modal',
-        inputValidator: (value) => {
-            if (!value || Number(value) <= 0) {
-                return 'Nominal harus lebih dari 0';
-            }
-            return null;
+      title: `Tambah Modal Simjaka`,
+      text: `Anggota: ${item.user_name} (${item.reference})`,
+      input: "number",
+      inputLabel: "Masukkan Nominal Tambah Modal (IDR)",
+      inputValue: "",
+      showCancelButton: true,
+      confirmButtonText: "Proses Tambah Modal",
+      inputValidator: (value) => {
+        if (!value || Number(value) <= 0) {
+          return "Nominal harus lebih dari 0";
         }
+        return null;
+      },
     });
 
     if (nominal) {
-        const addedNominal = Number(nominal);
-        setDataSimjaka((prev) => 
-            prev.map((d) => 
-                d.id === item.id 
-                    ? { ...d, nominal_sekarang: d.nominal_sekarang + addedNominal } 
-                    : d
-            )
-        );
-        Swal.fire({
-            icon: 'success',
-            title: 'Modal Ditambahkan',
-            text: `Berhasil menambah modal ${formatRupiah(addedNominal)} ke rekening ${item.no_rekening}.`,
-        });
+      const addedNominal = Number(nominal);
+      setDataSimjaka((prev) =>
+        prev.map((d) =>
+          d.id === item.id
+            ? { ...d, nominal_current: d.nominal_current + addedNominal }
+            : d
+        )
+      );
+      Swal.fire({
+        icon: "success",
+        title: "Modal Ditambahkan",
+        text: `Berhasil menambah modal ${formatRupiah(
+          addedNominal
+        )} ke rekening ${item.reference}.`,
+      });
     }
   };
 
-
   const handleExportExcel = () => {
     Swal.fire({
-        icon: 'info',
-        title: 'Export Data',
-        text: 'Permintaan export data Simpanan Berjangka sedang diproses. (Simulasi)',
-    });
-  };
-  
-  const handleAdd = () => {
-    Swal.fire({
       icon: "info",
-      title: "Tambah Data",
-      text: `Anda akan menambahkan data Simpanan Berjangka baru. (Simulasi)`,
+      title: "Export Data",
+      text: "Permintaan export data Simpanan Berjangka sedang diproses. (Simulasi)",
     });
-    // Di implementasi nyata, arahkan ke halaman tambah: router.push("/admin/simpanan-berjangka/add")
   };
 
+  // open modal for create
+  const handleAdd = () => {
+    setEditingId(undefined); // Penting: pastikan ID kosong untuk mode tambah
+    setShowForm(true);
+  };
+
+  // callback ketika form sukses
+  function onFormSuccess() {
+    refetch(); // Ambil ulang data
+    setShowForm(false);
+    setEditingId(undefined);
+  }
+
+  // cancel callback
+  function onFormCancel() {
+    setShowForm(false);
+    setEditingId(undefined);
+  }
+
+  // Menggunakan filteredList untuk tampilan
+  const listToDisplay = filteredList.length > 0 ? filteredList : dataSimjaka;
 
   return (
     <div className="p-6 space-y-6">
@@ -214,10 +306,10 @@ export default function SimpananBerjangkaPage() {
               { value: "all", label: "Semua Status" },
               { value: "Aktif", label: "Aktif" },
               { value: "Jatuh Tempo", label: "Jatuh Tempo" },
-              { value: "Tutup", label: "Tutup" },
+              { value: "Tidak Aktif", label: "Tidak Aktif" },
             ]}
             initialStatus={statusFilter}
-            onStatusChange={setStatusFilter}
+            onStatusChange={setStatusFilter as (value: string) => void}
             // Konfigurasi Export
             enableExport
             onExportExcel={handleExportExcel}
@@ -234,7 +326,7 @@ export default function SimpananBerjangkaPage() {
                 <tr>
                   <th className="px-4 py-3">Aksi</th>
                   <th className="px-4 py-3">Anggota</th>
-                  <th className="px-4 py-3">No. Rekening</th>
+                  <th className="px-4 py-3">Reference</th>
                   <th className="px-4 py-3">Produk</th>
                   <th className="px-4 py-3">Nominal Awal</th>
                   <th className="px-4 py-3">Nominal Saat Ini</th>
@@ -244,14 +336,20 @@ export default function SimpananBerjangkaPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredList.length === 0 ? (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={9} className="text-center p-4">
+                      Memuat data...
+                    </td>
+                  </tr>
+                ) : listToDisplay.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="text-center p-4">
                       Tidak ada data simpanan berjangka yang ditemukan.
                     </td>
                   </tr>
                 ) : (
-                  filteredList.map((item) => (
+                  listToDisplay.map((item) => (
                     <tr key={item.id} className="border-t hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <ActionsGroup
@@ -286,7 +384,7 @@ export default function SimpananBerjangkaPage() {
                                     variant="outline"
                                     onClick={() =>
                                       router.push(
-                                        `/admin/simpanan-berjangka/transaksi-simjaka?rekening=${item.no_rekening}`
+                                        `/admin/simpanan-berjangka/transaksi-simjaka?rekening=${item.reference}`
                                       )
                                     }
                                   >
@@ -302,25 +400,25 @@ export default function SimpananBerjangkaPage() {
                         />
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {item.anggota_name}
+                        {item.user_name}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap font-semibold">
-                        {item.no_rekening}
+                        {item.reference}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {item.produk}
+                        {item.category_name}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right font-mono">
-                        {formatRupiah(item.nominal_awal)}
+                        {formatRupiah(item.nominal)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-primary">
-                        {formatRupiah(item.nominal_sekarang)}
+                        {formatRupiah(item.nominal_current)}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {item.jangka_waktu}
+                        {item.term_months} bulan
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {item.tanggal_mulai}
+                        {displayDate(item.date)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <Badge variant={statusVariant(item.status)}>
@@ -336,12 +434,52 @@ export default function SimpananBerjangkaPage() {
         </CardContent>
       </Card>
 
-      {/* Catatan: Karena menggunakan data dummy, pagination dihilangkan */}
-      <p className="text-xs text-gray-500 mt-4">
-        {`
-        *Data di atas bersifat dummy dan tidak terhubung ke API. Nominal Saat Ini dapat berubah setelah menggunakan fitur "Tambah Modal".
-        `}
-      </p>
+      {/* Modal / Form */}
+      {showForm && (
+        // overlay
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40"
+          onClick={() => {
+            // klik overlay akan menutup modal
+            setShowForm(false);
+            setEditingId(undefined);
+          }}
+        >
+          {/* modal container: hentikan event bubbling agar klik di dalam modal tidak menutup */}
+          <div
+            className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-lg shadow-lg p-4"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-title"
+            ref={modalRef}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 id="modal-title" className="text-lg font-medium">
+                {editingId
+                  ? "Ubah Simpanan Berjangka"
+                  : "Tambah Simpanan Berjangka"}
+              </h3>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => {
+                    setShowForm(false);
+                    setEditingId(undefined);
+                  }}
+                >
+                  Tutup
+                </Button>
+              </div>
+            </div>
+
+            <SimpananBerjangkaForm
+              id={editingId}
+              onSuccess={() => onFormSuccess()}
+              onCancel={() => onFormCancel()}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,10 +6,10 @@ import {
   UpdateSimpananBerjangkaRequest,
 } from "@/types/admin/konfigurasi/simpanan-berjangka";
 
-export const simpananBerjangka = apiSlice.injectEndpoints({
+export const simpananBerjangkaCategories = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     // 🔍 Get All SimpananBerjangka Categories (with pagination)
-    getSimpananBerjangkaList: builder.query<
+    getSimpananBerjangkaCategoriesList: builder.query<
       {
         data: SimpananBerjangka[];
         last_page: number;
@@ -37,7 +37,7 @@ export const simpananBerjangka = apiSlice.injectEndpoints({
     }),
 
     // 🔍 Get SimpananBerjangka Category by ID
-    getSimpananBerjangkaById: builder.query<SimpananBerjangka, number>({
+    getSimpananBerjangkaCategoryById: builder.query<SimpananBerjangka, number>({
       query: (id) => ({
         url: `/master/simpanan-berjangka-categories/${id}`,
         method: "GET",
@@ -50,7 +50,7 @@ export const simpananBerjangka = apiSlice.injectEndpoints({
     }),
 
     // ➕ Create SimpananBerjangka Category
-    createSimpananBerjangka: builder.mutation<
+    createSimpananBerjangkaCategory: builder.mutation<
       SimpananBerjangka,
       CreateSimpananBerjangkaRequest
     >({
@@ -67,7 +67,7 @@ export const simpananBerjangka = apiSlice.injectEndpoints({
     }),
 
     // ✏️ Update SimpananBerjangka Category by ID
-    updateSimpananBerjangka: builder.mutation<
+    updateSimpananBerjangkaCategory: builder.mutation<
       SimpananBerjangka,
       { id: number; payload: UpdateSimpananBerjangkaRequest }
     >({
@@ -84,7 +84,7 @@ export const simpananBerjangka = apiSlice.injectEndpoints({
     }),
 
     // ❌ Delete SimpananBerjangka Category by ID
-    deleteSimpananBerjangka: builder.mutation<
+    deleteSimpananBerjangkaCategory: builder.mutation<
       { code: number; message: string },
       number
     >({
@@ -99,13 +99,13 @@ export const simpananBerjangka = apiSlice.injectEndpoints({
       }) => response,
     }),
   }),
-  overrideExisting: false,
+  overrideExisting: true,
 });
 
 export const {
-  useGetSimpananBerjangkaListQuery,
-  useGetSimpananBerjangkaByIdQuery,
-  useCreateSimpananBerjangkaMutation,
-  useUpdateSimpananBerjangkaMutation,
-  useDeleteSimpananBerjangkaMutation,
-} = simpananBerjangka;
+  useGetSimpananBerjangkaCategoriesListQuery,
+  useGetSimpananBerjangkaCategoryByIdQuery,
+  useCreateSimpananBerjangkaCategoryMutation,
+  useUpdateSimpananBerjangkaCategoryMutation,
+  useDeleteSimpananBerjangkaCategoryMutation,
+} = simpananBerjangkaCategories;
