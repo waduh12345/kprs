@@ -14,39 +14,40 @@ import { Label } from "@/components/ui/label";
 import {
   FileText,
   PlusCircle,
-  MinusCircle,
   Save,
   Trash2,
   ListChecks,
   AlertTriangle,
-  Zap,
   Loader2,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { Separator } from "@/components/ui/separator";
+import { Combobox } from "@/components/ui/combo-box";
+import {
+  useCreateJournalMutation,
+  useGetCOAListQuery,
+  CreateJournalRequest,
+} from "@/services/admin/journal.service";
 
-// --- DUMMY DATA & TYPES ---
+// --- TYPES ---
 
 interface JurnalEntry {
   id: number;
-  coa_id: string;
+  coa_id: number;
   nominal: number;
   tipe: "DEBET" | "KREDIT";
   keterangan: string;
 }
 
-interface COA {
-  id: string;
+type COAFromApi = {
+  id: number;
+  code: string;
   name: string;
-}
+  description?: string;
+  // additional fields exist but not required here
+};
 
-const dummyCOAs: COA[] = [
-  { id: "111001", name: "Kas di Tangan" },
-  { id: "112001", name: "Bank Operasional" },
-  { id: "121001", name: "Piutang Anggota" },
-  { id: "410001", name: "Pendapatan Jasa" },
-  { id: "510001", name: "Beban Gaji" },
-];
+// --- HELPERS ---
 
 const formatRupiah = (number: number) => {
   if (isNaN(number) || number === null || number === undefined) return "0";
@@ -60,17 +61,52 @@ const parseNominal = (value: string) => {
   return isNaN(parsed) ? 0 : parsed;
 };
 
+function extractErrorMessage(err: unknown): string {
+  if (err === null || err === undefined) return "Unknown error";
+  if (typeof err === "string") return err;
+  if (typeof err === "object") {
+    const e = err as Record<string, unknown>;
+    // RTK Query often returns { data: { message, errors } }
+    if ("data" in e && typeof e.data === "object" && e.data !== null) {
+      const d = e.data as Record<string, unknown>;
+      if ("message" in d && typeof d.message === "string") return d.message;
+      if ("errors" in d && typeof d.errors === "object" && d.errors !== null)
+        return JSON.stringify(d.errors, null, 2);
+    }
+    if ("message" in e && typeof e.message === "string") return e.message;
+    try {
+      return JSON.stringify(e);
+    } catch {
+      return String(e);
+    }
+  }
+  return String(err);
+}
+
 // --- KOMPONEN UTAMA ---
 
 export default function TransaksiAkuntansiPage() {
   const today = new Date().toISOString().substring(0, 10);
-  const [tanggal, setTanggal] = useState(today);
-  const [deskripsi, setDeskripsi] = useState("");
+  const [tanggal, setTanggal] = useState<string>(today);
+  const [deskripsi, setDeskripsi] = useState<string>("");
   const [jurnalEntries, setJurnalEntries] = useState<JurnalEntry[]>([]);
-  const [nextEntryId, setNextEntryId] = useState(1);
-  const [isPosting, setIsPosting] = useState(false);
+  const [nextEntryId, setNextEntryId] = useState<number>(1);
+  const [isPosting, setIsPosting] = useState<boolean>(false);
 
-  // --- VALIDASI & TOTAL ---
+  // ambil COA dari API (gunakan page 1, paginate besar supaya dapat banyak data)
+  const {
+    data: coaListResponse,
+    isLoading: isLoadingCoa,
+    isFetching: isFetchingCoa,
+  } = useGetCOAListQuery({ page: 1, paginate: 100 });
+
+  // flat COA array
+  const coas: COAFromApi[] = coaListResponse?.data ?? [];
+
+  // mutation untuk create journal
+  const [createJournal] = useCreateJournalMutation();
+
+  // --- TOTAL & VALIDASI ---
   const { totalDebet, totalKredit, isBalanced } = useMemo(() => {
     const debet = jurnalEntries
       .filter((e) => e.tipe === "DEBET")
@@ -88,17 +124,17 @@ export default function TransaksiAkuntansiPage() {
   // --- HANDLER JURNAL ENTRY ---
 
   const addJurnalEntry = (tipe: "DEBET" | "KREDIT") => {
-    setJurnalEntries([
-      ...jurnalEntries,
+    setJurnalEntries((prev) => [
+      ...prev,
       {
         id: nextEntryId,
-        coa_id: dummyCOAs[0].id, // Default COA pertama
+        coa_id: coas.length > 0 ? coas[0].id : 0, // default kalau ada COA
         nominal: 0,
         tipe: tipe,
         keterangan: "",
       },
     ]);
-    setNextEntryId(nextEntryId + 1);
+    setNextEntryId((n) => n + 1);
   };
 
   const updateJurnalEntry = <K extends keyof JurnalEntry>(
@@ -158,21 +194,44 @@ export default function TransaksiAkuntansiPage() {
 
     setIsPosting(true);
 
-    // Simulasi pemrosesan API
-    setTimeout(() => {
+    // susun body sesuai CreateJournalRequest
+    const payload: CreateJournalRequest = {
+      date: tanggal,
+      description: deskripsi,
+      is_posted: 1,
+      details: jurnalEntries.map((e) => ({
+        coa_id: e.coa_id,
+        type: e.tipe === "DEBET" ? "debit" : "credit",
+        debit: e.tipe === "DEBET" ? e.nominal : 0,
+        credit: e.tipe === "KREDIT" ? e.nominal : 0,
+        memo: e.keterangan ?? "",
+      })),
+    };
+
+    try {
+      // RTK Query - unwrap untuk mendapatkan response atau melempar error
+      await createJournal(payload).unwrap();
+
       setIsPosting(false);
-      Swal.fire({
+      await Swal.fire({
         icon: "success",
         title: "Posting Berhasil!",
-        text: `Jurnal berhasil dicatat dengan nomor bukti JRN-${
-          Math.floor(Math.random() * 9000) + 1000
-        }.`,
+        text: `Jurnal berhasil dicatat.`,
       });
+
       // Reset formulir
       setJurnalEntries([]);
       setDeskripsi("");
       setTanggal(new Date().toISOString().substring(0, 10));
-    }, 2000);
+    } catch (err) {
+      setIsPosting(false);
+      const msg = extractErrorMessage(err);
+      await Swal.fire({
+        icon: "error",
+        title: "Gagal Posting",
+        html: `<pre style="text-align:left; white-space:pre-wrap;">${msg}</pre>`,
+      });
+    }
   };
 
   return (
@@ -240,19 +299,16 @@ export default function TransaksiAkuntansiPage() {
               {jurnalEntries.map((entry) => (
                 <tr key={entry.id} className="border-t">
                   <td className="px-4 py-2">
-                    <select
+                    <Combobox<COAFromApi>
                       value={entry.coa_id}
-                      onChange={(e) =>
-                        updateJurnalEntry(entry.id, "coa_id", e.target.value)
+                      onChange={(val) =>
+                        updateJurnalEntry(entry.id, "coa_id", val)
                       }
-                      className="w-full p-1 border rounded"
-                    >
-                      {dummyCOAs.map((coa) => (
-                        <option key={coa.id} value={coa.id}>
-                          {coa.id} - {coa.name}
-                        </option>
-                      ))}
-                    </select>
+                      data={coas}
+                      isLoading={isLoadingCoa || isFetchingCoa}
+                      placeholder="Pilih COA"
+                      getOptionLabel={(item) => `${item.code} - ${item.name}`}
+                    />
                   </td>
                   <td className="px-4 py-2">
                     <Input

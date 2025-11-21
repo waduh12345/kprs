@@ -27,6 +27,7 @@ const TAGS = [
   "ChatList",
   "ChatMessages",
   "SimpananBerjangka",
+  "JournalEliminasi",
 ] as const;
 
 export const apiSlice = createApi({

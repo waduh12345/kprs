@@ -81,72 +81,47 @@ export interface UpdateJournalRequest {
   details?: JournalDetailForm[];
 }
 
-export interface COA {
-  id: number;
-  coa_id: number | null;
-  code: string;
-  name: string;
-  description: string;
-  level: number;
-  type: string;
-  created_at: string;
-  updated_at: string;
-  parent_name: string | null;
-  parent_code: string | null;
-  parent_level: number | null;
-}
-
-export interface COAListResponse {
-  current_page: number;
-  data: COA[];
-  first_page_url: string;
-  from: number;
-  last_page: number;
-  last_page_url: string;
-  links: Array<{
-    url: string | null;
-    label: string;
-    page: number | null;
-    active: boolean;
-  }>;
-  next_page_url: string | null;
-  path: string;
-  per_page: number;
-  prev_page_url: string | null;
-  to: number;
-  total: number;
-}
-
-/** Params type for fetching journal list */
-export interface GetJournalListParams {
+export interface GetJournalEliminasiListParams {
   page: number;
   paginate: number;
   orderBy?: string;
   order?: "asc" | "desc" | string;
-  searchBySpecific?: string; // e.g. "reference"
-  search?: string; // search value
+  searchBySpecific?: string;
+  search?: string;
+  from_date?: string;
+  to_date?: string;
+  is_posted?: number | string;
 }
 
-export const journalService = apiSlice.injectEndpoints({
+export const journalEliminasiService = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    getJournalList: builder.query<JournalListResponse, GetJournalListParams>({
+    getJournalEliminasiList: builder.query<
+      JournalListResponse,
+      GetJournalEliminasiListParams
+    >({
       query: ({
         page,
         paginate,
         orderBy = "updated_at",
         order = "desc",
-        searchBySpecific = "",
-        search = "",
+        searchBySpecific,
+        search,
+        from_date,
+        to_date,
+        is_posted,
       }) => ({
-        url: `/accounting/journals`,
+        url: `/accounting/journal-eliminasis`,
         method: "GET",
         params: {
           page,
           paginate,
           orderBy,
           order,
-          searchBySpecific,
-          search,
+          ...(searchBySpecific ? { searchBySpecific } : {}),
+          ...(search ? { search } : {}),
+          ...(from_date ? { from_date } : {}),
+          ...(to_date ? { to_date } : {}),
+          ...(is_posted !== undefined ? { is_posted } : {}),
         },
       }),
       transformResponse: (response: {
@@ -154,22 +129,24 @@ export const journalService = apiSlice.injectEndpoints({
         message: string;
         data: JournalListResponse;
       }) => response.data,
-      providesTags: ["Journal"],
+      providesTags: ["JournalEliminasi"],
     }),
 
-    getJournalById: builder.query<Journal, number>({
-      query: (id) => `/accounting/journals/${id}`,
+    getJournalEliminasiById: builder.query<Journal, number>({
+      query: (id) => `/accounting/journal-eliminasis/${id}`,
       transformResponse: (response: {
         code: number;
         message: string;
         data: Journal;
       }) => response.data,
-      providesTags: ["Journal"],
+      providesTags: (result, error, id) => [
+        { type: "JournalEliminasi" as const, id },
+      ],
     }),
 
-    createJournal: builder.mutation<Journal, CreateJournalRequest>({
+    createJournalEliminasi: builder.mutation<Journal, CreateJournalRequest>({
       query: (data) => ({
-        url: `/accounting/journals`,
+        url: `/accounting/journal-eliminasis`,
         method: "POST",
         body: data,
       }),
@@ -178,15 +155,15 @@ export const journalService = apiSlice.injectEndpoints({
         message: string;
         data: Journal;
       }) => response.data,
-      invalidatesTags: ["Journal"],
+      invalidatesTags: ["JournalEliminasi"],
     }),
 
-    updateJournal: builder.mutation<
+    updateJournalEliminasi: builder.mutation<
       Journal,
       { id: number; data: UpdateJournalRequest }
     >({
       query: ({ id, data }) => ({
-        url: `/accounting/journals/${id}`,
+        url: `/accounting/journal-eliminasis/${id}`,
         method: "PUT",
         body: data,
       }),
@@ -195,44 +172,29 @@ export const journalService = apiSlice.injectEndpoints({
         message: string;
         data: Journal;
       }) => response.data,
-      invalidatesTags: ["Journal"],
+      invalidatesTags: (result, error, arg) => [
+        "JournalEliminasi",
+        { type: "JournalEliminasi" as const, id: arg.id },
+      ],
     }),
 
-    deleteJournal: builder.mutation<void, number>({
+    deleteJournalEliminasi: builder.mutation<void, number>({
       query: (id) => ({
-        url: `/accounting/journals/${id}`,
+        url: `/accounting/journal-eliminasis/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Journal"],
-    }),
-
-    getCOAList: builder.query<
-      COAListResponse,
-      { page: number; paginate: number }
-    >({
-      query: ({ page, paginate }) => ({
-        url: `/master/coas`,
-        method: "GET",
-        params: {
-          page,
-          paginate,
-        },
-      }),
-      transformResponse: (response: {
-        code: number;
-        message: string;
-        data: COAListResponse;
-      }) => response.data,
-      providesTags: ["COA"],
+      invalidatesTags: (result, error, id) => [
+        "JournalEliminasi",
+        { type: "JournalEliminasi" as const, id },
+      ],
     }),
   }),
 });
 
 export const {
-  useGetJournalListQuery,
-  useGetJournalByIdQuery,
-  useCreateJournalMutation,
-  useUpdateJournalMutation,
-  useDeleteJournalMutation,
-  useGetCOAListQuery,
-} = journalService;
+  useGetJournalEliminasiListQuery,
+  useGetJournalEliminasiByIdQuery,
+  useCreateJournalEliminasiMutation,
+  useUpdateJournalEliminasiMutation,
+  useDeleteJournalEliminasiMutation,
+} = journalEliminasiService;

@@ -22,29 +22,31 @@ import {
   Zap,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { Combobox } from "@/components/ui/combo-box";
+import {
+  useCreateJournalEliminasiMutation,
+  CreateJournalRequest,
+} from "@/services/admin/journal-elimininasis.service";
+import {  useGetCOAListQuery} from "@/services/admin/journal.service";
 
-// --- DUMMY DATA & TYPES ---
+// --- TYPES ---
 
 interface JurnalEntry {
   id: number;
-  coa_id: string;
+  coa_id: number;
   nominal: number;
   tipe: "DEBET" | "KREDIT";
   keterangan: string;
 }
 
-interface COA {
-  id: string;
+type COAFromApi = {
+  id: number;
+  code: string;
   name: string;
-}
+  description?: string | null;
+};
 
-const dummyCOAs: COA[] = [
-  { id: "310001", name: "Modal Induk" },
-  { id: "320001", name: "Laba Ditahan Anak" },
-  { id: "490001", name: "Pendapatan Antar Perusahaan" },
-  { id: "590001", name: "Beban Antar Perusahaan" },
-  { id: "131001", name: "Investasi pada Anak" },
-];
+// --- HELPERS ---
 
 const formatRupiah = (number: number) => {
   if (isNaN(number) || number === null || number === undefined) return "0";
@@ -58,21 +60,56 @@ const parseNominal = (value: string) => {
   return isNaN(parsed) ? 0 : parsed;
 };
 
-// --- KOMPONEN UTAMA ---
+function extractErrorMessage(err: unknown): string {
+  if (err === null || err === undefined) return "Unknown error";
+  if (typeof err === "string") return err;
+  if (typeof err === "object") {
+    const e = err as Record<string, unknown>;
+    // RTK Query often returns { data: { message, errors } } or error object with message
+    if ("data" in e && typeof e.data === "object" && e.data !== null) {
+      const d = e.data as Record<string, unknown>;
+      if ("message" in d && typeof d.message === "string") return d.message;
+      if ("errors" in d && typeof d.errors === "object" && d.errors !== null)
+        return JSON.stringify(d.errors, null, 2);
+    }
+    if ("message" in e && typeof e.message === "string") return e.message;
+    try {
+      return JSON.stringify(e, null, 2);
+    } catch {
+      return String(e);
+    }
+  }
+  return String(err);
+}
+
+// --- COMPONENT ---
 
 export default function TransaksiJurnalEliminasiPage() {
   const today = new Date().toISOString().substring(0, 10);
   const currentMonth = new Date().toISOString().substring(0, 7);
 
-  const [tanggal, setTanggal] = useState(today);
-  const [periodeEliminasi, setPeriodeEliminasi] = useState(currentMonth);
-  const [noDokumen, setNoDokumen] = useState("");
-  const [deskripsi, setDeskripsi] = useState("");
+  const [tanggal, setTanggal] = useState<string>(today);
+  const [periodeEliminasi, setPeriodeEliminasi] =
+    useState<string>(currentMonth);
+  const [noDokumen, setNoDokumen] = useState<string>("");
+  const [deskripsi, setDeskripsi] = useState<string>("");
   const [jurnalEntries, setJurnalEntries] = useState<JurnalEntry[]>([]);
-  const [nextEntryId, setNextEntryId] = useState(1);
-  const [isPosting, setIsPosting] = useState(false);
+  const [nextEntryId, setNextEntryId] = useState<number>(1);
+  const [isPosting, setIsPosting] = useState<boolean>(false);
 
-  // --- VALIDASI & TOTAL ---
+  // ambil COA dari API
+  const {
+    data: coaListResponse,
+    isLoading: isLoadingCoa,
+    isFetching: isFetchingCoa,
+  } = useGetCOAListQuery({ page: 1, paginate: 100 });
+
+  const coas: COAFromApi[] = coaListResponse?.data ?? [];
+
+  // mutation create eliminasi
+  const [createJournalEliminasi] = useCreateJournalEliminasiMutation();
+
+  // --- TOTAL & VALIDASI ---
   const { totalDebet, totalKredit, isBalanced } = useMemo(() => {
     const debet = jurnalEntries
       .filter((e) => e.tipe === "DEBET")
@@ -90,17 +127,17 @@ export default function TransaksiJurnalEliminasiPage() {
   // --- HANDLER JURNAL ENTRY ---
 
   const addJurnalEntry = (tipe: "DEBET" | "KREDIT") => {
-    setJurnalEntries([
-      ...jurnalEntries,
+    setJurnalEntries((prev) => [
+      ...prev,
       {
         id: nextEntryId,
-        coa_id: dummyCOAs[0].id, // Default COA pertama
+        coa_id: coas.length > 0 ? coas[0].id : 0,
         nominal: 0,
-        tipe: tipe,
+        tipe,
         keterangan: "",
       },
     ]);
-    setNextEntryId(nextEntryId + 1);
+    setNextEntryId((n) => n + 1);
   };
 
   const updateJurnalEntry = <K extends keyof JurnalEntry>(
@@ -160,22 +197,44 @@ export default function TransaksiJurnalEliminasiPage() {
 
     setIsPosting(true);
 
-    // Simulasi pemrosesan API
-    setTimeout(() => {
+    const payload: CreateJournalRequest = {
+      date: tanggal,
+      description: deskripsi,
+      is_posted: 1,
+      details: jurnalEntries.map((e) => ({
+        coa_id: e.coa_id,
+        type: e.tipe === "DEBET" ? "debit" : "credit",
+        debit: e.tipe === "DEBET" ? e.nominal : 0,
+        credit: e.tipe === "KREDIT" ? e.nominal : 0,
+        memo: e.keterangan ?? "",
+      })),
+    };
+
+    try {
+      await createJournalEliminasi(payload).unwrap();
+
       setIsPosting(false);
-      Swal.fire({
+      await Swal.fire({
         icon: "success",
         title: "Posting Berhasil!",
-        text: `Jurnal Eliminasi berhasil dicatat dengan nomor dokumen ELM-${
-          Math.floor(Math.random() * 900) + 100
-        }.`,
+        text: `Jurnal Eliminasi berhasil dicatat.`,
       });
+
       // Reset formulir
       setJurnalEntries([]);
       setDeskripsi("");
       setNoDokumen("");
       setTanggal(new Date().toISOString().substring(0, 10));
-    }, 2000);
+      setPeriodeEliminasi(new Date().toISOString().substring(0, 7));
+    } catch (err) {
+      setIsPosting(false);
+      const msg = extractErrorMessage(err);
+      await Swal.fire({
+        icon: "error",
+        title: "Gagal Posting",
+        html: `<pre style="text-align:left; white-space:pre-wrap;">${msg}</pre>`,
+      });
+    }
   };
 
   return (
@@ -211,7 +270,16 @@ export default function TransaksiJurnalEliminasiPage() {
               onChange={(e) => setTanggal(e.target.value)}
             />
           </div>
-          <div className="space-y-2 col-span-2">
+          <div className="space-y-2">
+            <Label htmlFor="noDokumen">No. Dokumen</Label>
+            <Input
+              id="noDokumen"
+              placeholder="Opsional: nomor dokumen/ref"
+              value={noDokumen}
+              onChange={(e) => setNoDokumen(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="deskripsi">Deskripsi Eliminasi</Label>
             <Input
               id="deskripsi"
@@ -253,19 +321,17 @@ export default function TransaksiJurnalEliminasiPage() {
               {jurnalEntries.map((entry) => (
                 <tr key={entry.id} className="border-t">
                   <td className="px-4 py-2">
-                    <select
+                    <Combobox<COAFromApi>
                       value={entry.coa_id}
-                      onChange={(e) =>
-                        updateJurnalEntry(entry.id, "coa_id", e.target.value)
+                      onChange={(val) =>
+                        updateJurnalEntry(entry.id, "coa_id", val)
                       }
-                      className="w-full p-1 border rounded"
-                    >
-                      {dummyCOAs.map((coa) => (
-                        <option key={coa.id} value={coa.id}>
-                          {coa.id} - {coa.name}
-                        </option>
-                      ))}
-                    </select>
+                      data={coas}
+                      isLoading={isLoadingCoa || isFetchingCoa}
+                      placeholder="Pilih COA"
+                      getOptionLabel={(item) => `${item.code} - ${item.name}`}
+                      disabled={coas.length === 0}
+                    />
                   </td>
                   <td className="px-4 py-2">
                     <Input
