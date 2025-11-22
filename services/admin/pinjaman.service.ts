@@ -7,6 +7,10 @@ import {
   PaymentHistory,
   PaymentHistoryResponse,
   Pelunasan,
+  PinjamanMutasi,
+  PinjamanMutasiResponse,
+  PinjamanNominatif,
+  PinjamanNominatifResponse
 } from "@/types/admin/pinjaman";
 
 export const pinjamanApi = apiSlice.injectEndpoints({
@@ -26,13 +30,13 @@ export const pinjamanApi = apiSlice.injectEndpoints({
         category_id?: number;
         status?: string;
         user_id?: number;
-        date_from?: string;
-        date_to?: string;
+        from_date?: string;
+        to_date?: string;
         search?: string;
         searchBySpecific?: string;
       }
     >({
-      query: ({ page, paginate, category_id, status, user_id, date_from, date_to, search, searchBySpecific }) => ({
+      query: ({ page, paginate, category_id, status, user_id, from_date, to_date, search, searchBySpecific }) => ({
         url: `/pinjaman`,
         method: "GET",
         params: {
@@ -44,8 +48,8 @@ export const pinjamanApi = apiSlice.injectEndpoints({
           ...(category_id && { category_id }),
           ...(status && { status }),
           ...(user_id && { user_id }),
-          ...(date_from && { date_from }),
-          ...(date_to && { date_to }),
+          ...(from_date && { from_date }),
+          ...(to_date && { to_date }),
         },
       }),
       transformResponse: (response: PinjamanResponse) => ({
@@ -232,12 +236,12 @@ export const pinjamanApi = apiSlice.injectEndpoints({
     // 🔄 Update Status Pinjaman
     updatePinjamanStatus: builder.mutation<
       Pinjaman,
-      { id: number; status: string, realization_date?: string }
+      { id: number; status: string; approval_date?: string; realization_date?: string }
     >({
-      query: ({ id, status, realization_date }) => ({
+      query: ({ id, status, approval_date, realization_date }) => ({
         url: `/pinjaman/${id}/validate`,
         method: "PUT",
-        body: { status, realization_date },
+        body: { status, approval_date, realization_date },
       }),
       transformResponse: (response: {
         code: number;
@@ -369,6 +373,197 @@ export const pinjamanApi = apiSlice.injectEndpoints({
         data: PaymentHistory;
       }) => response.data,
     }),
+
+    // mutasi
+    getPinjamanMutasiList: builder.query<
+      {
+        data: PinjamanMutasi[];
+        last_page: number;
+        current_page: number;
+        total: number;
+        per_page: number;
+      },
+      { 
+        page: number; 
+        paginate: number;
+        status?: string;
+        from_date?: string;
+        to_date?: string;
+        type?: string;
+        search?: string;
+        searchBySpecific?: string;
+      }
+    >({
+      query: ({ page, paginate, status, from_date, to_date, type, search, searchBySpecific }) => ({
+        url: `/pinjaman/mutasi`,
+        method: "GET",
+        params: {
+          page,
+          paginate,
+          ...(searchBySpecific && { searchBySpecific }),
+          ...(search && { search }),
+          ...(status && { status }),
+          ...(from_date && { from_date }),
+          ...(to_date && { to_date }),
+          ...(type && { type }),
+        },
+      }),
+      transformResponse: (response: PinjamanMutasiResponse) => ({
+        data: response.data.data,
+        last_page: response.data.last_page,
+        current_page: response.data.current_page,
+        total: response.data.total,
+        per_page: response.data.per_page,
+      }),
+    }),
+    getPinjamanMutasiDebitCredit: builder.query<
+      {
+        debit: {
+          total_amount: string;
+          transaction_count: number;
+        };
+        credit: {
+          total_amount: number;
+          transaction_count: number;
+        };
+        net_balance: number;
+      },
+      void
+    >({
+      query: () => ({
+        url: `/pinjaman/mutasi/debit-credit`,
+        method: "GET",
+      }),
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: {
+          debit: {
+            total_amount: string;
+            transaction_count: number;
+          };
+          credit: {
+            total_amount: number;
+            transaction_count: number;
+          };
+          net_balance: number;
+        };
+      }) => response.data,
+    }),
+
+    // report
+    // mutasi
+    getPinjamanNominatifList: builder.query<
+      {
+        data: PinjamanNominatif[];
+        last_page: number;
+        current_page: number;
+        total: number;
+        per_page: number;
+      },
+      { 
+        page: number; 
+        paginate: number;
+        status?: string;
+        from_date?: string;
+        to_date?: string;
+        search?: string;
+        searchBySpecific?: string;
+      }
+    >({
+      query: ({ page, paginate, status, from_date, to_date, search, searchBySpecific }) => ({
+        url: `/pinjaman/report/nominatif`,
+        method: "GET",
+        params: {
+          page,
+          paginate,
+          ...(searchBySpecific && { searchBySpecific }),
+          ...(search && { search }),
+          ...(status && { status }),
+          ...(from_date && { from_date }),
+          ...(to_date && { to_date }),
+        },
+      }),
+      transformResponse: (response: PinjamanNominatifResponse) => ({
+        data: response.data.data,
+        last_page: response.data.last_page,
+        current_page: response.data.current_page,
+        total: response.data.total,
+        per_page: response.data.per_page,
+      }),
+    }),
+    getPinjamanOutstanding: builder.query<
+      {
+        total_outstanding: number;
+      },
+      void
+    >({
+      query: () => ({
+        url: `/pinjaman/report/total-outstanding`,
+        method: "GET",
+      }),
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: string | number;
+      }) => ({
+        total_outstanding: typeof response.data === "string" ? Number(response.data) : response.data
+      }),
+    }),
+    getPinjamanRealization: builder.query<
+      {
+        total_realization: number;
+      },
+      void
+    >({
+      query: () => ({
+        url: `/pinjaman/report/total-realization`,
+        method: "GET",
+      }),
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: string | number;
+      }) => ({
+        total_realization: typeof response.data === "string" ? Number(response.data) : response.data
+      }),
+    }),
+    getPinjamanApproved: builder.query<
+      {
+        total_approved: number;
+      },
+      void
+    >({
+      query: () => ({
+        url: `/pinjaman/report/total-approved`,
+        method: "GET",
+      }),
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: string | number;
+      }) => ({
+        total_approved: typeof response.data === "string" ? Number(response.data) : response.data
+      }),
+    }),
+    getPinjamanAdminFee: builder.query<
+      {
+        total_admin_fee: number;
+      },
+      void
+    >({
+      query: () => ({
+        url: `/pinjaman/report/total-admin-fee`,
+        method: "GET",
+      }),
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: string | number;
+      }) => ({
+        total_admin_fee: typeof response.data === "string" ? Number(response.data) : response.data
+      }),
+    }),
   }),
   overrideExisting: false,
 });
@@ -387,5 +582,12 @@ export const {
   useUpdatePaymentHistoryMutation,
   useDeletePaymentHistoryMutation,
   useUpdatePaymentStatusMutation,
-  useBulkSettlementMutation
+  useBulkSettlementMutation,
+  useGetPinjamanMutasiListQuery,
+  useGetPinjamanMutasiDebitCreditQuery,
+  useGetPinjamanNominatifListQuery,
+  useGetPinjamanOutstandingQuery,
+  useGetPinjamanRealizationQuery,
+  useGetPinjamanApprovedQuery,
+  useGetPinjamanAdminFeeQuery,
 } = pinjamanApi;

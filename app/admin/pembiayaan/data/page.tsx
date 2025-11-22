@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import useModal from "@/hooks/use-modal";
@@ -29,13 +28,11 @@ import {
   Download,
   Search,
   Plus,
-  Eye,
-  Edit,
-  Trash2,
   CheckCircle,
   XCircle,
   CreditCard,
   DollarSign,
+  Calendar,
 } from "lucide-react";
 import ActionsGroup from "@/components/admin-components/actions-group";
 
@@ -44,11 +41,10 @@ export default function PinjamanAnggotaPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [readonly, setReadonly] = useState(false);
   const { isOpen, openModal, closeModal } = useModal();
+  
+  // State untuk Payment History
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [selectedPinjaman, setSelectedPinjaman] = useState<Pinjaman | null>(
-    null
-  );
-  const [isExporting, setIsExporting] = useState(false);
+  const [selectedPinjaman, setSelectedPinjaman] = useState<Pinjaman | null>(null);
   const [selectedInstallment, setSelectedInstallment] = useState<{
     id: number;
     month: number;
@@ -57,9 +53,14 @@ export default function PinjamanAnggotaPage() {
     status: boolean;
   } | null>(null);
   const [paymentFile, setPaymentFile] = useState<File | null>(null);
-  const [paymentType, setPaymentType] = useState<"manual" | "automatic">(
-    "manual"
-  );
+  const [paymentType, setPaymentType] = useState<"manual" | "automatic">("manual");
+
+  // State untuk Approval Modal
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [itemToApprove, setItemToApprove] = useState<Pinjaman | null>(null);
+  const [approvalDate, setApprovalDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  const [isExporting, setIsExporting] = useState(false);
 
   // Pagination
   const itemsPerPage = 10;
@@ -115,16 +116,12 @@ export default function PinjamanAnggotaPage() {
     return category?.code || "Kode tidak tersedia";
   };
 
-  const [createPinjaman, { isLoading: isCreating }] =
-    useCreatePinjamanMutation();
-  const [updatePinjaman, { isLoading: isUpdating }] =
-    useUpdatePinjamanMutation();
+  const [createPinjaman, { isLoading: isCreating }] = useCreatePinjamanMutation();
+  const [updatePinjaman, { isLoading: isUpdating }] = useUpdatePinjamanMutation();
   const [deletePinjaman] = useDeletePinjamanMutation();
   const [updateStatus] = useUpdatePinjamanStatusMutation();
   const [createPayment] = useCreatePaymentMutation();
-  // const [generateInstallments] = useGenerateInstallmentsMutation();
 
-  // Get pinjaman details with installments when a pinjaman is selected
   const {
     data: pinjamanDetails,
     isLoading: isLoadingInstallments,
@@ -179,9 +176,7 @@ export default function PinjamanAnggotaPage() {
   const handleDelete = async (item: Pinjaman) => {
     const confirm = await Swal.fire({
       title: "Yakin hapus pinjaman?",
-      text: `Pinjaman ${item.user?.name} - Rp ${item.nominal?.toLocaleString(
-        "id-ID"
-      )}`,
+      text: `Pinjaman ${item.user?.name} - Rp ${item.nominal?.toLocaleString("id-ID")}`,
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Hapus",
@@ -199,13 +194,58 @@ export default function PinjamanAnggotaPage() {
     }
   };
 
-  const handleStatusUpdate = async (item: Pinjaman, newStatus: string) => {
+  // Handler untuk menolak pinjaman (langsung update status)
+  const handleReject = async (item: Pinjaman) => {
+    const confirm = await Swal.fire({
+      title: "Tolak Pinjaman?",
+      text: "Apakah Anda yakin ingin menolak pengajuan ini?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Tolak",
+      confirmButtonColor: "#d33",
+    });
+
+    if (confirm.isConfirmed) {
+      try {
+        await updateStatus({ id: item.id, status: "2" }).unwrap();
+        await refetch();
+        Swal.fire("Berhasil", "Status pinjaman ditolak", "success");
+      } catch (error) {
+        Swal.fire("Gagal", "Gagal memperbarui status", "error");
+        console.error(error);
+      }
+    }
+  };
+
+  // Handler untuk membuka modal approval
+  const handleOpenApprovalModal = (item: Pinjaman) => {
+    setItemToApprove(item);
+    // Set default date to today or the item's date if preferable
+    setApprovalDate(new Date().toISOString().split("T")[0]);
+    setApprovalModalOpen(true);
+  };
+
+  // Handler submit approval dengan tanggal
+  const handleSubmitApproval = async () => {
+    if (!itemToApprove || !approvalDate) {
+      Swal.fire("Peringatan", "Tanggal persetujuan harus diisi", "warning");
+      return;
+    }
+
     try {
-      await updateStatus({ id: item.id, status: newStatus }).unwrap();
+      // Mengirim approval_date bersama status
+      await updateStatus({ 
+        id: itemToApprove.id, 
+        status: "1", 
+        approval_date: approvalDate 
+      }).unwrap();
+      
       await refetch();
-      Swal.fire("Berhasil", "Status pinjaman diperbarui", "success");
+      setApprovalModalOpen(false);
+      setItemToApprove(null);
+      Swal.fire("Berhasil", "Pinjaman disetujui", "success");
     } catch (error) {
-      Swal.fire("Gagal", "Gagal memperbarui status", "error");
+      Swal.fire("Gagal", "Gagal menyetujui pinjaman", "error");
       console.error(error);
     }
   };
@@ -222,11 +262,7 @@ export default function PinjamanAnggotaPage() {
     }
 
     if (paymentType === "manual" && !paymentFile) {
-      Swal.fire(
-        "Error",
-        "Pilih file bukti pembayaran terlebih dahulu",
-        "error"
-      );
+      Swal.fire("Error", "Pilih file bukti pembayaran terlebih dahulu", "error");
       return;
     }
 
@@ -271,7 +307,6 @@ export default function PinjamanAnggotaPage() {
 
     setIsExporting(true);
 
-    // Prepare data for export
     const exportData = filteredData.map((item, index) => ({
       No: index + 1,
       Anggota: getUserName(item.user_id),
@@ -291,7 +326,6 @@ export default function PinjamanAnggotaPage() {
         : "-",
     }));
 
-    // Create CSV content with metadata
     const headers = Object.keys(exportData[0]);
     const filterInfo = [];
 
@@ -319,7 +353,6 @@ export default function PinjamanAnggotaPage() {
         headers
           .map((header) => {
             const value = row[header as keyof typeof row];
-            // Escape commas and quotes in values
             if (
               typeof value === "string" &&
               (value.includes(",") || value.includes('"'))
@@ -332,7 +365,6 @@ export default function PinjamanAnggotaPage() {
       ),
     ].join("\n");
 
-    // Create and download file
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
@@ -354,34 +386,26 @@ export default function PinjamanAnggotaPage() {
     setIsExporting(false);
   };
 
-  // Filter data based on all filters
   const filteredData = useMemo(() => {
     let filtered = pinjamanList;
 
-    // Apply category filter
     if (filters.category_id) {
       filtered = filtered.filter(
         (item) => item.pinjaman_category_id === Number(filters.category_id)
       );
     }
 
-    // Apply status filter
     if (filters.status) {
       filtered = filtered.filter(
         (item) => String(item.status) === filters.status
       );
     }
 
-    // Apply search filter
     if (filters.search) {
       filtered = filtered.filter(
         (item) =>
-          item.user?.name
-            ?.toLowerCase()
-            .includes(filters.search.toLowerCase()) ||
-          item.pinjaman_category?.name
-            ?.toLowerCase()
-            .includes(filters.search.toLowerCase()) ||
+          item.user?.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
+          item.pinjaman_category?.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
           item.description?.toLowerCase().includes(filters.search.toLowerCase())
       );
     }
@@ -399,41 +423,13 @@ export default function PinjamanAnggotaPage() {
 
   const getStatusBadge = (status: string | number) => {
     const statusConfig = {
-      "0": {
-        variant: "secondary" as const,
-        label: "Pending",
-        className: "bg-yellow-100 text-yellow-800",
-      },
-      "1": {
-        variant: "success" as const,
-        label: "Approved",
-        className: "bg-green-100 text-green-800",
-      },
-      "2": {
-        variant: "destructive" as const,
-        label: "Ditolak",
-        className: "bg-red-100 text-red-800",
-      },
-      "3": {
-        variant: "success" as const,
-        label: "Realisasi",
-        className: "bg-green-200 text-green-800",
-      },
-      pending: {
-        variant: "secondary" as const,
-        label: "Pending",
-        className: "bg-yellow-100 text-yellow-800",
-      },
-      approved: {
-        variant: "success" as const,
-        label: "Approved",
-        className: "bg-green-100 text-green-800",
-      },
-      rejected: {
-        variant: "destructive" as const,
-        label: "Ditolak",
-        className: "bg-red-100 text-red-800",
-      },
+      "0": { variant: "secondary" as const, label: "Pending", className: "bg-yellow-100 text-yellow-800" },
+      "1": { variant: "success" as const, label: "Approved", className: "bg-green-100 text-green-800" },
+      "2": { variant: "destructive" as const, label: "Ditolak", className: "bg-red-100 text-red-800" },
+      "3": { variant: "success" as const, label: "Realisasi", className: "bg-green-200 text-green-800" },
+      pending: { variant: "secondary" as const, label: "Pending", className: "bg-yellow-100 text-yellow-800" },
+      approved: { variant: "success" as const, label: "Approved", className: "bg-green-100 text-green-800" },
+      rejected: { variant: "destructive" as const, label: "Ditolak", className: "bg-red-100 text-red-800" },
     };
 
     const statusKey = String(status);
@@ -452,15 +448,10 @@ export default function PinjamanAnggotaPage() {
 
   return (
     <div className="px-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between"></div>
-
       {/* Filters */}
       <div className="rounded-md bg-white p-4 border border-gray-100 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          {/* Kiri: filter */}
           <div className="w-full flex flex-col gap-3 sm:flex-row sm:items-center">
-            {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
@@ -474,14 +465,12 @@ export default function PinjamanAnggotaPage() {
               />
             </div>
 
-            {/* Kategori */}
             <select
               className="w-full sm:w-56 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={filters.category_id}
               onChange={(e) =>
                 setFilters({ ...filters, category_id: e.target.value })
               }
-              aria-label="Filter kategori pinjaman"
             >
               <option value="">Semua Kategori</option>
               {categories.map((category) => (
@@ -491,24 +480,20 @@ export default function PinjamanAnggotaPage() {
               ))}
             </select>
 
-            {/* Status */}
             <select
               className="w-full sm:w-48 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={filters.status}
               onChange={(e) =>
                 setFilters({ ...filters, status: e.target.value })
               }
-              aria-label="Filter status pinjaman"
             >
               <option value="">Semua Status</option>
               <option value="0">Pending</option>
               <option value="1">Approved</option>
               <option value="2">Ditolak</option>
             </select>
-
           </div>
 
-          {/* Kanan: aksi */}
           <div className="shrink-0 flex flex-wrap items-center gap-2">
             <div className="flex gap-2">
               <Button
@@ -562,13 +547,13 @@ export default function PinjamanAnggotaPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="text-center p-4">
+                  <td colSpan={9} className="text-center p-4">
                     Memuat data...
                   </td>
                 </tr>
               ) : filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center p-4">
+                  <td colSpan={9} className="text-center p-4">
                     Tidak ada data
                   </td>
                 </tr>
@@ -633,7 +618,8 @@ export default function PinjamanAnggotaPage() {
                                   <TooltipTrigger asChild>
                                     <Button
                                       size="sm"
-                                      onClick={() => handleStatusUpdate(item, "1")}
+                                      // PERUBAHAN DISINI: Membuka modal approval
+                                      onClick={() => handleOpenApprovalModal(item)}
                                       className="bg-green-600 hover:bg-green-700"
                                     >
                                       <CheckCircle className="size-4" />
@@ -648,7 +634,7 @@ export default function PinjamanAnggotaPage() {
                                   <TooltipTrigger asChild>
                                     <Button
                                       size="sm"
-                                      onClick={() => handleStatusUpdate(item, "2")}
+                                      onClick={() => handleReject(item)}
                                       className="bg-red-600 hover:bg-red-700"
                                     >
                                       <XCircle className="size-4" />
@@ -701,11 +687,9 @@ export default function PinjamanAnggotaPage() {
           </table>
         </CardContent>
 
-        {/* Pagination */}
         <div className="p-4 flex items-center justify-between bg-muted">
           <div className="text-sm">
-            Halaman <strong>{currentPage}</strong> dari{" "}
-            <strong>{lastPage}</strong>
+            Halaman <strong>{currentPage}</strong> dari <strong>{lastPage}</strong>
           </div>
           <div className="flex gap-2">
             <Button
@@ -745,6 +729,76 @@ export default function PinjamanAnggotaPage() {
         </div>
       )}
 
+      {/* APPROVAL MODAL */}
+      {approvalModalOpen && itemToApprove && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-md shadow-lg">
+            <div className="flex justify-between items-center mb-4 border-b pb-2">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                Konfirmasi Persetujuan
+              </h2>
+              <button
+                onClick={() => {
+                  setApprovalModalOpen(false);
+                  setItemToApprove(null);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-green-50 p-3 rounded border border-green-200">
+                <p className="text-sm text-green-800">
+                  Anda akan menyetujui pinjaman untuk:
+                </p>
+                <p className="font-bold text-green-900">{itemToApprove.user?.name}</p>
+                <p className="text-sm text-green-800">
+                  Nominal: {formatCurrency(itemToApprove.nominal || 0)}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Tanggal Disetujui (Approval Date) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={approvalDate}
+                  onChange={(e) => setApprovalDate(e.target.value)}
+                  required
+                />
+                <p className="text-xs text-gray-500">
+                  Tanggal ini akan digunakan sebagai tanggal mulai berlakunya pinjaman.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setApprovalModalOpen(false);
+                    setItemToApprove(null);
+                  }}
+                >
+                  Batal
+                </Button>
+                <Button 
+                  onClick={handleSubmitApproval} 
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  Setujui Pinjaman
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payment History Modal */}
       {paymentModalOpen && selectedPinjaman && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
@@ -761,10 +815,6 @@ export default function PinjamanAnggotaPage() {
                     pinjamanDetails?.nominal || selectedPinjaman.nominal
                   )}{" "}
                   - {pinjamanDetails?.tenor || selectedPinjaman.tenor} bulan
-                </p>
-                <p className="text-xs text-gray-400">
-                  Angsuran per bulan:{" "}
-                  {formatCurrency(pinjamanDetails?.monthly_installment || 0)}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -981,7 +1031,6 @@ export default function PinjamanAnggotaPage() {
                 </p>
               </div>
 
-              {/* Payment Type Selection */}
               <div>
                 <label className="block text-sm font-medium mb-2">
                   Tipe Pembayaran
@@ -1016,7 +1065,6 @@ export default function PinjamanAnggotaPage() {
                 </div>
               </div>
 
-              {/* Manual Payment - File Upload */}
               {paymentType === "manual" && (
                 <div>
                   <label className="block text-sm font-medium mb-2">
@@ -1036,7 +1084,6 @@ export default function PinjamanAnggotaPage() {
                 </div>
               )}
 
-              {/* Automatic Payment - Summary */}
               {paymentType === "automatic" && (
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <h3 className="font-medium text-blue-900 mb-2">

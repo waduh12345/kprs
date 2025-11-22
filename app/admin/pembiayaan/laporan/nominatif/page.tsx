@@ -4,166 +4,139 @@ import React, { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ProdukToolbar } from "@/components/ui/produk-toolbar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   BarChart2,
   Calendar,
   FileDown,
-  Users,
   DollarSign,
   Search,
-  ListChecks,
   CheckCircle,
-  AlertTriangle,
+  Loader2,
+  FileText,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import {
+  useGetPinjamanNominatifListQuery,
+  useGetPinjamanOutstandingQuery,
+} from "@/services/admin/pinjaman.service";
 
-// --- DUMMY DATA & TYPES ---
+// --- TYPES BASED ON API RESPONSE ---
 
-interface NominatifPembiayaan {
-  no_kontrak: string;
-  anggota_name: string;
-  produk: string;
-  nominal_pinjaman: number;
-  sisa_pokok: number;
-  tenor_total: number;
-  tenor_sisa: number;
-  tgl_realisasi: string;
-  tgl_jatuh_tempo: string;
-  kolektibilitas: "Lancar" | "DPD (Dalam Perhatian Khusus)" | "Macet";
-  denda_tunggakan: number;
+interface NominatifItem {
+  id: number;
+  reference: string; // No Kontrak
+  user_name: string; // Nama Anggota
+  category_name: string; // Produk
+  category_code: string;
+  nominal: number; // Nominal Pinjaman Awal
+  detail_outstandings_sum_remaining: string | null; // Sisa Pokok (String dari API)
+  tenor: number; // Total Tenor
+  details_count: number;
+  detail_outstandings_count: number; // Sisa Tenor
+  realization_date: string | null; // Tgl Realisasi
+  status: number; // Status Pinjaman
+  approval_date: string | null;
+  description: string;
 }
-
-const initialDummyData: NominatifPembiayaan[] = [
-  {
-    no_kontrak: "PJN/M/001",
-    anggota_name: "Budi Santoso",
-    produk: "Pembiayaan Mikro",
-    nominal_pinjaman: 15000000,
-    sisa_pokok: 10000000,
-    tenor_total: 12,
-    tenor_sisa: 8,
-    tgl_realisasi: "2025-04-15",
-    tgl_jatuh_tempo: "2026-04-15",
-    kolektibilitas: "Lancar",
-    denda_tunggakan: 0,
-  },
-  {
-    no_kontrak: "PJN/I/002",
-    anggota_name: "Siti Rahayu",
-    produk: "Pembiayaan Investasi",
-    nominal_pinjaman: 50000000,
-    sisa_pokok: 40000000,
-    tenor_total: 24,
-    tenor_sisa: 20,
-    tgl_realisasi: "2025-01-20",
-    tgl_jatuh_tempo: "2027-01-20",
-    kolektibilitas: "Lancar",
-    denda_tunggakan: 0,
-  },
-  {
-    no_kontrak: "PJN/M/003",
-    anggota_name: "Joko Widodo",
-    produk: "Pembiayaan Mikro",
-    nominal_pinjaman: 10000000,
-    sisa_pokok: 5000000,
-    tenor_total: 10,
-    tenor_sisa: 5,
-    tgl_realisasi: "2025-01-10",
-    tgl_jatuh_tempo: "2025-11-10",
-    kolektibilitas: "DPD (Dalam Perhatian Khusus)",
-    denda_tunggakan: 150000,
-  },
-  {
-    no_kontrak: "PJN/MG/004",
-    anggota_name: "Rini Melati",
-    produk: "Kredit Multi Guna",
-    nominal_pinjaman: 30000000,
-    sisa_pokok: 30000000,
-    tenor_total: 12,
-    tenor_sisa: 12,
-    tgl_realisasi: "2025-10-01",
-    tgl_jatuh_tempo: "2026-10-01",
-    kolektibilitas: "Lancar",
-    denda_tunggakan: 0,
-  },
-];
 
 // --- HELPER FUNCTIONS ---
 
-const formatRupiah = (number: number) => {
-  if (isNaN(number) || number === null || number === undefined) return 'Rp 0';
+const formatRupiah = (number: number | string) => {
+  const num = typeof number === "string" ? parseFloat(number) : number;
+  if (isNaN(num) || num === null || num === undefined) return "Rp 0";
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
-  }).format(number);
+  }).format(num);
 };
 
-const statusVariant = (kolektibilitas: NominatifPembiayaan["kolektibilitas"]): "success" | "destructive" | "default" | "secondary" => {
-  if (kolektibilitas === "Lancar") return "success";
-  if (kolektibilitas === "Macet") return "destructive";
-  if (kolektibilitas === "DPD (Dalam Perhatian Khusus)") return "default";
-  return "secondary";
+const formatDate = (dateString: string | null) => {
+  if (!dateString) return "-";
+  return new Date(dateString).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const getStatusBadge = (status: number) => {
+  switch (status) {
+    case 0:
+      return { label: "Pending", variant: "secondary" as const };
+    case 1:
+      return { label: "Approved", variant: "default" as const };
+    case 2:
+      return { label: "Rejected", variant: "destructive" as const };
+    case 3:
+      return { label: "Active (Realisasi)", variant: "success" as const };
+    case 4:
+      return { label: "Lunas", variant: "outline" as const };
+    default:
+      return { label: "Unknown", variant: "secondary" as const };
+  }
 };
 
 // --- KOMPONEN UTAMA ---
 
 export default function LaporanNominatifPembiayaanPage() {
   const today = new Date().toISOString().substring(0, 10);
-  const [dataNominatif] = useState<NominatifPembiayaan[]>(initialDummyData);
+  const [posisiTanggal, setPosisiTanggal] = useState(today);
   const [query, setQuery] = useState("");
-  const [posisiTanggal, setPosisiTanggal] = useState(today); // Tanggal laporan
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  
+  // Pagination State
+  const itemsPerPage = 10;
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const filteredList = useMemo(() => {
-    let arr = dataNominatif;
+  // 1. Fetch Data List Nominatif
+  const { 
+    data: listResponse, 
+    isLoading: isLoadingList,
+    isFetching: isFetchingList
+  } = useGetPinjamanNominatifListQuery({
+    page: currentPage,
+    paginate: itemsPerPage,
+    from_date: posisiTanggal, // Menggunakan filter tanggal (misal: "as of date")
+    to_date: posisiTanggal, // Menggunakan filter tanggal (misal: "as of date")
+    search: query,
+  });
 
-    // Catatan: Dalam implementasi nyata, data Nominatif akan ditarik
-    // dari API berdasarkan 'posisiTanggal'. Di sini, kita abaikan filter tanggal
-    // karena data dummy sudah statis.
+  // 2. Fetch Data Total Outstanding
+  const { 
+    data: outstandingResponse, 
+    isLoading: isLoadingOutstanding 
+  } = useGetPinjamanOutstandingQuery();
 
-    // 1. Filter Status Kolektibilitas
-    if (statusFilter !== "all") {
-      arr = arr.filter((it) => it.kolektibilitas === statusFilter);
+  // Extract Data
+  const nominatifList: NominatifItem[] = listResponse?.data || [];
+  const pagination = listResponse
+    ? {
+        current_page: listResponse.current_page ?? 1,
+        last_page: listResponse.last_page ?? 1,
+        total: listResponse.total ?? 0,
+      }
+    : {
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+      };
+
+  // Parsing Total Outstanding dari API (string "56721600" -> number)
+  const totalOutstanding = useMemo(() => {
+    if (outstandingResponse?.total_outstanding !== undefined) {
+      return outstandingResponse.total_outstanding;
     }
-
-    // 2. Filter Query Pencarian
-    if (!query.trim()) return arr;
-    const q = query.toLowerCase();
-    return arr.filter((it) =>
-      [it.anggota_name, it.no_kontrak, it.produk].some(
-        (f) => f?.toLowerCase?.().includes?.(q)
-      )
-    );
-  }, [dataNominatif, query, statusFilter]);
-
-  // --- SUMMARY ---
-  const summary = useMemo(() => {
-    const totalOutstanding = filteredList.reduce((sum, item) => sum + item.sisa_pokok, 0);
-    const totalDenda = filteredList.reduce((sum, item) => sum + item.denda_tunggakan, 0);
-    const countLancar = filteredList.filter(d => d.kolektibilitas === 'Lancar').length;
-    const countDPD = filteredList.filter(d => d.kolektibilitas === 'DPD (Dalam Perhatian Khusus)').length;
-    const countMacet = filteredList.filter(d => d.kolektibilitas === 'Macet').length;
-    return { 
-        totalOutstanding, 
-        totalDenda, 
-        countLancar, 
-        countDPD, 
-        countMacet, 
-        totalRekening: filteredList.length 
-    };
-  }, [filteredList]);
+    return 0;
+  }, [outstandingResponse]);
 
   // --- HANDLER EXPORT ---
   const handleExportExcel = () => {
-    // Simulasi Export
     Swal.fire({
       icon: "info",
       title: "Export Laporan Nominatif",
-      text: `Mengekspor data Nominatif Pembiayaan posisi tanggal ${posisiTanggal}. (Simulasi)`,
+      text: `Mengekspor data Nominatif Pembiayaan posisi tanggal ${posisiTanggal}.`,
       confirmButtonText: "Oke",
     });
   };
@@ -175,106 +148,95 @@ export default function LaporanNominatifPembiayaanPage() {
         Laporan Nominatif Pembiayaan
       </h2>
 
-      {/* --- KARTU FILTER POSISI --- */}
+      {/* --- KARTU FILTER --- */}
       <Card>
         <CardHeader>
           <CardTitle className="text-xl flex items-center gap-2 text-indigo-600">
             <Calendar className="h-5 w-5" /> Kontrol Laporan
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
           <div className="space-y-2">
             <Label htmlFor="posisi_tanggal">Posisi Tanggal Laporan</Label>
             <Input
               id="posisi_tanggal"
               type="date"
               value={posisiTanggal}
-              onChange={(e) => setPosisiTanggal(e.target.value)}
+              onChange={(e) => {
+                setPosisiTanggal(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="status_filter">Filter Status Kolektibilitas</Label>
-            <select
-              id="status_filter"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="all">Semua Status</option>
-              <option value="Lancar">Lancar</option>
-              <option value="DPD (Dalam Perhatian Khusus)">DPD (Perhatian Khusus)</option>
-              <option value="Macet">Macet</option>
-            </select>
-          </div>
-           <div className="space-y-2 col-span-2">
-            <Label htmlFor="search_query">Cari Anggota/Kontrak</Label>
-            <Input
-              id="search_query"
-              placeholder="No. Kontrak atau Nama Anggota"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="h-10"
-            />
+          <div className="space-y-2 col-span-1 lg:col-span-2">
+            <Label htmlFor="search_query">Cari Anggota / No. Kontrak</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                id="search_query"
+                placeholder="Ketikan No. Kontrak atau Nama Anggota..."
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="pl-10 h-10"
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
       
       {/* --- SUMMARY CARDS --- */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-white border-l-4 border-primary">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Card 1: Total Outstanding (Dari API Outstanding) */}
+        <Card className="bg-white border-l-4 border-primary shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Outstanding</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Total Sisa Pokok (Outstanding)</CardTitle>
             <DollarSign className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatRupiah(summary.totalOutstanding)}</div>
-            <p className="text-xs text-muted-foreground">{summary.totalRekening} Rekening</p>
+            {isLoadingOutstanding ? (
+               <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            ) : (
+              <div className="text-2xl font-bold text-gray-900">{formatRupiah(totalOutstanding)}</div>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">Akumulasi seluruh pinjaman aktif</p>
           </CardContent>
         </Card>
-        <Card className="bg-white border-l-4 border-green-500">
+
+        {/* Card 2: Total Rekening (Dari Metadata Pagination) */}
+        <Card className="bg-white border-l-4 border-green-500 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Rekening Lancar</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
+            <CardTitle className="text-sm font-medium text-gray-600">Total Rekening</CardTitle>
+            <FileText className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary.countLancar} Unit</div>
-            <p className="text-xs text-muted-foreground">Status Terbaik</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-white border-l-4 border-yellow-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Rekening DPD/Khusus</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-yellow-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.countDPD} Unit</div>
-            <p className="text-xs text-muted-foreground">Perlu Tindak Lanjut</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-white border-l-4 border-red-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Denda Tunggakan</CardTitle>
-            <DollarSign className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatRupiah(summary.totalDenda)}</div>
-            <p className="text-xs text-muted-foreground">{summary.countMacet} Rekening Macet</p>
+             {isLoadingList ? (
+               <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            ) : (
+              <div className="text-2xl font-bold text-gray-900">{pagination.total} Unit</div>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">Total data ditemukan</p>
           </CardContent>
         </Card>
       </div>
 
-
       {/* --- TABEL NOMINATIF --- */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Detail Nominatif Pembiayaan</CardTitle>
+          <CardTitle className="text-lg flex items-center gap-2">
+            Detail Nominatif Pembiayaan
+            {isFetchingList && <Loader2 className="animate-spin h-4 w-4 text-gray-400" />}
+          </CardTitle>
           <Button
-                onClick={handleExportExcel}
-                className="bg-primary hover:bg-indigo-700"
-            >
-                <FileDown className="mr-2 h-4 w-4" />
-                Export Data
-            </Button>
+              onClick={handleExportExcel}
+              className="bg-primary hover:bg-indigo-700"
+              disabled={isLoadingList || nominatifList.length === 0}
+          >
+              <FileDown className="mr-2 h-4 w-4" />
+              Export Data
+          </Button>
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -283,51 +245,112 @@ export default function LaporanNominatifPembiayaanPage() {
                 <th className="px-4 py-3">No. Kontrak</th>
                 <th className="px-4 py-3">Anggota</th>
                 <th className="px-4 py-3">Produk</th>
-                <th className="px-4 py-3 text-right">Nominal Pinjaman</th>
+                <th className="px-4 py-3 text-right">Nominal Awal</th>
                 <th className="px-4 py-3 text-right">Sisa Pokok</th>
                 <th className="px-4 py-3 text-center">Tenor (Sisa/Total)</th>
                 <th className="px-4 py-3">Tgl. Realisasi</th>
-                <th className="px-4 py-3">Kolektibilitas</th>
-                <th className="px-4 py-3 text-right">Denda</th>
+                <th className="px-4 py-3 text-center">Status</th>
               </tr>
             </thead>
             <tbody>
-              {filteredList.length === 0 ? (
+              {isLoadingList ? (
+                 <tr>
+                   <td colSpan={8} className="text-center p-8">
+                     <div className="flex justify-center items-center gap-2">
+                       <Loader2 className="animate-spin h-5 w-5 text-primary" />
+                       <span>Memuat data nominatif...</span>
+                     </div>
+                   </td>
+                 </tr>
+              ) : nominatifList.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center p-4">
-                    Tidak ada data nominatif yang ditemukan untuk filter yang dipilih.
+                  <td colSpan={8} className="text-center p-8 text-gray-500">
+                    Tidak ada data nominatif yang ditemukan.
                   </td>
                 </tr>
               ) : (
-                filteredList.map((item) => (
-                  <tr key={item.no_kontrak} className="border-t hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap font-medium">{item.no_kontrak}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{item.anggota_name}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{item.produk}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right">{formatRupiah(item.nominal_pinjaman)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-primary">
-                      {formatRupiah(item.sisa_pokok)}
-                    </td>
-                    <td className="px-4 py-3 text-center">{item.tenor_sisa}/{item.tenor_total}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-gray-600">{item.tgl_realisasi}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <Badge variant={statusVariant(item.kolektibilitas)}>
-                        {item.kolektibilitas}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right font-semibold text-red-600">
-                      {formatRupiah(item.denda_tunggakan)}
-                    </td>
-                  </tr>
-                ))
+                nominatifList.map((item) => {
+                  const statusInfo = getStatusBadge(item.status);
+                  // Parsing sisa pokok dari string response API
+                  const sisaPokok = item.detail_outstandings_sum_remaining 
+                    ? parseFloat(item.detail_outstandings_sum_remaining) 
+                    : 0;
+
+                  return (
+                    <tr key={item.id} className="border-t hover:bg-gray-50">
+                      <td className="px-4 py-3 whitespace-nowrap font-medium text-indigo-600">
+                        {item.reference}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="font-medium">{item.user_name}</div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {item.category_name}
+                        <div className="text-xs text-gray-400">Kode: {item.category_code}</div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right text-gray-600">
+                        {formatRupiah(item.nominal)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-primary">
+                        {/* Jika status belum realisasi (misal 0/pending), sisa pokok mungkin 0 atau null */}
+                        {item.status >= 3 ? formatRupiah(sisaPokok) : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {/* Menampilkan Sisa Tenor / Total Tenor */}
+                        {item.status >= 3 ? (
+                          <span className="font-medium">
+                            {item.detail_outstandings_count} / {item.tenor}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">- / {item.tenor}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-600">
+                        {formatDate(item.realization_date)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-center">
+                        <Badge variant={statusInfo.variant}>
+                          {statusInfo.label}
+                        </Badge>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </CardContent>
+
+        {/* PAGINATION */}
+        {!isLoadingList && pagination.last_page > 1 && (
+          <div className="p-4 flex items-center justify-between bg-muted border-t">
+            <div className="text-sm text-gray-500">
+              Halaman <strong>{pagination.current_page}</strong> dari <strong>{pagination.last_page}</strong>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pagination.current_page <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              >
+                Sebelumnya
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pagination.current_page >= pagination.last_page}
+                onClick={() => setCurrentPage((p) => p + 1)}
+              >
+                Berikutnya
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
       
       <p className="text-xs text-gray-500 mt-4">
-        *Laporan Nominatif adalah data posisi outstanding (sisa pokok) pada tanggal laporan.
+        *Laporan Nominatif menyajikan posisi sisa pokok (outstanding) per tanggal laporan. Data "Sisa Pokok" hanya muncul untuk pinjaman yang berstatus <strong>Active (Realisasi)</strong>.
       </p>
     </div>
   );

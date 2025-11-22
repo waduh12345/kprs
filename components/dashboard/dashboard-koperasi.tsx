@@ -7,13 +7,18 @@ import {
   CreditCard,
   CalendarDays,
   Target,
-  Clock,
   BookOpen,
   PieChart,
   ListChecks,
   DollarSign,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+
+import {
+  useGetDataHeadQuery,
+  useGetSimpananChartQuery,
+  useGetPinjamanChartQuery,
+} from "@/services/admin/dashboard.service";
 
 // Chart.js + types
 import {
@@ -25,7 +30,7 @@ import {
   Tooltip,
   Legend,
   Filler,
-  ArcElement, // Ditambahkan untuk Pie Chart
+  ArcElement,
   type ChartData,
   type ChartOptions,
   type TooltipItem,
@@ -43,39 +48,17 @@ ChartJS.register(
   ArcElement
 );
 
-// --- DUMMY DATA STRUCTURES ---
-
-const DUMMY_HEAD_DATA = {
-  total_anggota: 1250,
-  total_simpanan: 18050000000, // 18.05 M
-  total_pinjaman: 25500000000, // 25.5 M
-  tagihan_bulan_ini: 1550000000, // 1.55 M
-  shu_tahun_berjalan: 500000000, // Laba Bersih
-};
-
-const DUMMY_SIMPANAN_DATA = {
-  // Simpanan per Kategori
-  pokok: 1250000000,
-  wajib: 5000000000,
-  sukarela: 11800000000,
-  berjangka: 2000000000,
-  // Matriks Pinjaman (Kol 1 - Kol 5)
-  kol_lancar: 90,
-  kol_dpd: 5,
-  kol_macet: 5,
-};
-
-const DUMMY_COLLECTION_DATA = {
-    // Total Outstanding Pinjaman
-    outstanding_total: 25500000000,
-    // Outstanding Non-Performing Loan (Kol 3, 4, 5)
-    outstanding_npl: 1250000000, // 1.25 M
-};
-
-const DUMMY_AKUNTANSI_DATA = {
-    neraca_balanced: true,
-    kas_bank: 5500000000,
-    piutang_usaha: 18000000000,
+// --- DUMMY DATA (HANYA UNTUK BAGIAN YANG BELUM ADA API-NYA) ---
+// Bagian: SHU, NPL, Neraca, Distribusi Simpanan
+const DUMMY_DATA_FALLBACK = {
+  shu_tahun_berjalan: 500000000,
+  neraca_balanced: true,
+  kas_bank: 5500000000,
+  kol_lancar: 24250000000,
+  kol_dpd: 1000000000,
+  kol_macet: 250000000,
+  // Untuk Pie Chart Simpanan (karena API head belum memecah per kategori)
+  simpanan_detail: [1250000000, 5000000000, 11800000000, 2000000000],
 };
 
 // ===== Utils =====
@@ -93,74 +76,81 @@ const formatRupiah = (amount: number): string =>
 const formatNumber = (num: number): string =>
   new Intl.NumberFormat("id-ID").format(num);
 
-const last12MonthLabels = (): string[] => {
-  const labels: string[] = [];
-  const now = new Date();
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    labels.push(d.toLocaleString("id-ID", { month: "short", year: "2-digit" }));
-  }
-  return labels;
-};
-
-// Simulasi data chart (digantikan dengan dummy data)
-const generateDummyMonthlyData = (base: number) => {
-    const data = [];
-    for (let i = 0; i < 12; i++) {
-        // Fluktuasi +/- 10%
-        const fluctuation = (Math.random() * 0.2 - 0.1); 
-        data.push(Math.round(base * (1 + fluctuation)));
-    }
-    return data;
-}
-
+// Generate Label Bulan (Jan - Des) untuk tahun yang dipilih
+const getMonthLabels = () => [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+];
 
 export default function DashboardPage() {
-  // Get current year for API call (retained but unused for dummy data)
   const currentYear = new Date().getFullYear();
-  const isLoading = false; // Set loading to false for dummy data display
+  const [year, setYear] = useState(currentYear);
 
-  // Data processing (Simulasi)
-  const labels = useMemo(last12MonthLabels, []);
+  // 1. Fetch Data API
+  const { data: headData, isLoading: loadHead } = useGetDataHeadQuery();
   
-  const monthlySimpanan = useMemo(() => generateDummyMonthlyData(DUMMY_HEAD_DATA.total_simpanan / 12), []);
-  const monthlyPinjaman = useMemo(() => generateDummyMonthlyData(DUMMY_HEAD_DATA.total_pinjaman / 12), []);
+  const { data: simpananChartResponse, isLoading: loadSimpanan } = useGetSimpananChartQuery({
+    year: year,
+  });
 
-  // Ringkasan from DUMMY DATA
-  const totalAnggota = DUMMY_HEAD_DATA.total_anggota;
-  const totalSimpanan = DUMMY_HEAD_DATA.total_simpanan;
-  const totalPinjaman = DUMMY_HEAD_DATA.total_pinjaman;
-  const totalTagihanBulanIni = DUMMY_HEAD_DATA.tagihan_bulan_ini;
-  const totalSHUBersih = DUMMY_HEAD_DATA.shu_tahun_berjalan;
-  const totalNPL = DUMMY_COLLECTION_DATA.outstanding_npl;
-  const totalOutstanding = DUMMY_COLLECTION_DATA.outstanding_total;
-  const nplRatio = totalOutstanding > 0 ? (totalNPL / totalOutstanding) : 0;
-  
-  // Data untuk Pie Chart Simpanan
+  const { data: pinjamanChartResponse, isLoading: loadPinjaman } = useGetPinjamanChartQuery({
+    year: year,
+  });
+
+  const isLoading = loadHead || loadSimpanan || loadPinjaman;
+
+  // 2. Process Chart Data (Mapping API response to Array[12])
+  const { labels, simpananSeries, pinjamanSeries } = useMemo(() => {
+    const monthLabels = getMonthLabels();
+    
+    // Helper untuk mapping data API ({month: "2025-01", total: ...}) ke array urut index 0-11
+    const mapToYearlyData = (apiData: { month: string; total: string | number }[] | undefined) => {
+      const dataArray = new Array(12).fill(0);
+      
+      if (!apiData) return dataArray;
+
+      apiData.forEach((item) => {
+        // item.month format "YYYY-MM" -> ambil bagian MM
+        const monthIndex = parseInt(item.month.split("-")[1], 10) - 1; 
+        if (monthIndex >= 0 && monthIndex < 12) {
+          dataArray[monthIndex] = Number(item.total);
+        }
+      });
+      
+      return dataArray;
+    };
+
+    return {
+      labels: monthLabels,
+      simpananSeries: mapToYearlyData(simpananChartResponse),
+      pinjamanSeries: mapToYearlyData(pinjamanChartResponse),
+    };
+  }, [simpananChartResponse, pinjamanChartResponse]);
+
+
+  // 3. Pie Chart Data (Masih Dummy karena API belum menyediakan detail per kategori)
   const simpananPieData: ChartData<"pie"> = useMemo(() => ({
     labels: ['Pokok', 'Wajib', 'Sukarela', 'Berjangka'],
     datasets: [{
-        data: [
-            DUMMY_SIMPANAN_DATA.pokok,
-            DUMMY_SIMPANAN_DATA.wajib,
-            DUMMY_SIMPANAN_DATA.sukarela,
-            DUMMY_SIMPANAN_DATA.berjangka
-        ],
+        data: DUMMY_DATA_FALLBACK.simpanan_detail,
         backgroundColor: [
-            'rgba(255, 99, 132, 0.8)', // Merah
-            'rgba(54, 162, 235, 0.8)', // Biru
-            'rgba(255, 206, 86, 0.8)', // Kuning
-            'rgba(75, 192, 192, 0.8)' // Hijau
-        ],
-        hoverBackgroundColor: [
-            'rgba(255, 99, 132, 1)',
-            'rgba(54, 162, 235, 1)',
-            'rgba(255, 206, 86, 1)',
-            'rgba(75, 192, 192, 1)'
+            'rgba(255, 99, 132, 0.8)',
+            'rgba(54, 162, 235, 0.8)',
+            'rgba(255, 206, 86, 0.8)',
+            'rgba(75, 192, 192, 0.8)'
         ],
     }]
   }), []);
 
+  // 4. Setup Data Cards (Ambil dari API Head)
+  const totalAnggota = headData?.total_anggota ?? 0;
+  const totalSimpanan = Number(headData?.total_simpanan ?? 0);
+  const totalPinjaman = headData?.total_pinjaman ?? 0;
+  const totalTagihanBulanIni = headData?.total_tagihan_pinjaman_this_month ?? 0;
+  
+  // Kalkulasi rasio dummy (karena API belum ada)
+  const totalOutstandingDummy = DUMMY_DATA_FALLBACK.kol_lancar + DUMMY_DATA_FALLBACK.kol_dpd + DUMMY_DATA_FALLBACK.kol_macet;
+  const nplRatio = (DUMMY_DATA_FALLBACK.kol_macet + DUMMY_DATA_FALLBACK.kol_dpd) / totalOutstandingDummy;
 
   const cards = [
     {
@@ -169,15 +159,15 @@ export default function DashboardPage() {
       icon: Users,
       color: "text-blue-600",
       bgColor: "bg-blue-100",
-      detail: "Modul Anggota",
+      detail: "Data Realtime",
     },
     {
-      title: "Total Simpanan (Kewajiban)",
+      title: "Total Simpanan",
       value: formatRupiah(totalSimpanan),
       icon: Banknote,
       color: "text-emerald-600",
       bgColor: "bg-emerald-100",
-      detail: "Modul Simpanan",
+      detail: "Akumulasi Simpanan",
     },
     {
       title: "Total Piutang Pinjaman",
@@ -185,24 +175,23 @@ export default function DashboardPage() {
       icon: CreditCard,
       color: "text-orange-600",
       bgColor: "bg-orange-100",
-      detail: "Modul Pembiayaan",
+      detail: "Outstanding Pinjaman",
     },
     {
-      title: "SHU / Laba Bersih Berjalan",
-      value: formatRupiah(totalSHUBersih),
+      title: "SHU Tahun Berjalan",
+      value: formatRupiah(DUMMY_DATA_FALLBACK.shu_tahun_berjalan),
       icon: DollarSign,
       color: "text-purple-600",
       bgColor: "bg-purple-100",
-      detail: "Modul Akuntansi",
+      detail: "Estimasi (Dummy)",
     },
-    // Tambahan untuk NPL dan Tagihan
     {
-      title: "Tagihan Angsuran Bulan Ini",
+      title: "Tagihan Bulan Ini",
       value: formatRupiah(totalTagihanBulanIni),
       icon: CalendarDays,
       color: "text-red-600",
       bgColor: "bg-red-100",
-      detail: "Modul Collection",
+      detail: "Jatuh Tempo Bulan Ini",
     },
     {
       title: "Rasio NPF / NPL",
@@ -210,25 +199,25 @@ export default function DashboardPage() {
       icon: Target,
       color: nplRatio > 0.05 ? "text-red-600" : "text-green-600",
       bgColor: nplRatio > 0.05 ? "bg-red-100" : "bg-green-100",
-      detail: "Modul Collection",
+      detail: "Simulasi (Dummy)",
     },
     {
         title: "Keseimbangan Neraca",
-        value: DUMMY_AKUNTANSI_DATA.neraca_balanced ? "SEIMBANG" : "TIDAK",
+        value: DUMMY_DATA_FALLBACK.neraca_balanced ? "SEIMBANG" : "TIDAK",
         icon: BookOpen,
-        color: DUMMY_AKUNTANSI_DATA.neraca_balanced ? "text-green-600" : "text-red-600",
-        bgColor: DUMMY_AKUNTANSI_DATA.neraca_balanced ? "bg-green-100" : "bg-red-100",
-        detail: "Modul Akuntansi",
+        color: DUMMY_DATA_FALLBACK.neraca_balanced ? "text-green-600" : "text-red-600",
+        bgColor: DUMMY_DATA_FALLBACK.neraca_balanced ? "bg-green-100" : "bg-red-100",
+        detail: "Simulasi (Dummy)",
     },
     {
-        title: "Kas & Bank (Aktiva Lancar)",
-        value: formatRupiah(DUMMY_AKUNTANSI_DATA.kas_bank),
+        title: "Kas & Bank",
+        value: formatRupiah(DUMMY_DATA_FALLBACK.kas_bank),
         icon: Banknote,
         color: "text-gray-600",
         bgColor: "bg-gray-100",
-        detail: "Modul Akuntansi",
+        detail: "Simulasi (Dummy)",
     },
-  ] as const;
+  ];
 
   // ===== Chart configurations =====
   const commonOptions: ChartOptions<"line"> = {
@@ -262,76 +251,27 @@ export default function DashboardPage() {
     maintainAspectRatio: false,
     plugins: {
         legend: { position: 'right', align: 'center' },
-        tooltip: {
-            callbacks: {
-                label: (ctx: TooltipItem<'pie'>): string => {
-                    const label = ctx.label || '';
-                    const value = ctx.raw as number;
-                    const total = ctx.dataset.data.reduce((a, b) => (a as number) + (b as number), 0) as number;
-                    const percentage = total ? ((value / total) * 100).toFixed(1) : 0;
-                    return `${label}: ${formatRupiah(value)} (${percentage}%)`;
-                }
-            }
-        }
     }
   }
 
-  const simpananData: ChartData<"line"> = {
-    labels,
-    datasets: [
-      {
-        label: "Simpanan Total (Kredit)",
-        data: monthlySimpanan,
-        borderColor: "rgba(16,185,129,1)", // emerald-500
-        backgroundColor: "rgba(16,185,129,0.2)",
-        fill: true,
-        tension: 0.35,
-        pointRadius: 2,
-      },
-    ],
-  };
-
-  const pinjamanData: ChartData<"line"> = {
-    labels,
-    datasets: [
-      {
-        label: "Piutang Pinjaman (Debit)",
-        data: monthlyPinjaman,
-        borderColor: "rgba(59,130,246,1)", // blue-500
-        backgroundColor: "rgba(59,130,246,0.2)",
-        fill: true,
-        tension: 0.35,
-        pointRadius: 2,
-      },
-    ],
-  };
-
-
+  // Loading State
   if (isLoading) {
-    // Reusing the loading state from the original code
     return (
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-gray-900">Dashboard Koperasi</h1>
-          <p className="text-sm text-gray-500">
-            Ringkasan keseluruhan modul
-          </p>
         </div>
-        
-        {/* Loading Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {Array.from({ length: 8 }).map((_, i) => (
             <Card key={i} className="animate-pulse">
               <CardHeader className="pb-2">
                 <div className="flex items-center space-x-2">
-                  <div className="p-2 rounded-full bg-gray-200">
-                    <div className="h-4 w-4 bg-gray-300 rounded"></div>
-                  </div>
+                  <div className="h-8 w-8 bg-gray-200 rounded-full"></div>
                   <div className="h-4 w-24 bg-gray-200 rounded"></div>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="h-6 w-1/2 bg-gray-200 rounded mx-auto"></div>
+                <div className="h-8 w-1/2 bg-gray-200 rounded mt-2"></div>
               </CardContent>
             </Card>
           ))}
@@ -345,48 +285,18 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Dashboard Koperasi</h1>
         <p className="text-sm text-gray-500">
-          Ringkasan kinerja operasional, risiko, dan akuntansi
+          Ringkasan kinerja operasional Tahun {year}
         </p>
       </div>
 
-      {/* Kartu Ringkasan (Modul Head) */}
+      {/* Kartu Ringkasan */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-6">
-        {cards.slice(0, 4).map((c, i) => {
+        {cards.map((c, i) => {
           const Icon = c.icon;
           return (
             <Card
               key={i}
-              className="hover:shadow-lg transition-shadow duration-200 border-l-4 border-indigo-500"
-            >
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium text-gray-600">
-                    {c.title}
-                  </CardTitle>
-                  <div className={`p-1 rounded-full ${c.bgColor}`}>
-                    <Icon className={`h-4 w-4 ${c.color}`} />
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="text-2xl font-bold text-gray-900">
-                  {c.value}
-                </div>
-                <p className="text-xs text-gray-500 mt-1">{c.detail}</p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-      
-      {/* Kartu Ringkasan (Modul Pendukung & Risiko) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-6">
-        {cards.slice(4, 8).map((c, i) => {
-          const Icon = c.icon;
-          return (
-            <Card
-              key={i + 4}
-              className="hover:shadow-lg transition-shadow duration-200"
+              className={`hover:shadow-lg transition-shadow duration-200 ${i < 4 ? 'border-l-4 border-indigo-500' : ''}`}
             >
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -411,26 +321,42 @@ export default function DashboardPage() {
 
       {/* Grafik Lini Masa & Distribusi */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Grafik Simpanan */}
+        {/* Grafik Simpanan vs Pinjaman (API DATA) */}
         <Card className="h-96 lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-lg font-semibold">
-              Grafik Mutasi Total Pinjaman vs Simpanan (1 Tahun)
+              Trend Simpanan vs Pinjaman ({year})
             </CardTitle>
           </CardHeader>
           <CardContent className="h-[300px]">
               <Line data={{
                   labels,
                   datasets: [
-                      { ...simpananData.datasets[0], label: "Simpanan (Kredit)", yAxisID: 'y' },
-                      { ...pinjamanData.datasets[0], label: "Pinjaman (Debit)", borderColor: "rgba(59,130,246,1)", backgroundColor: "rgba(59,130,246,0.2)", fill: false, tension: 0.1, yAxisID: 'y' },
+                      { 
+                        label: "Simpanan (API)", 
+                        data: simpananSeries,
+                        borderColor: "rgba(16,185,129,1)", 
+                        backgroundColor: "rgba(16,185,129,0.2)",
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 3,
+                      },
+                      { 
+                        label: "Pinjaman (API)", 
+                        data: pinjamanSeries,
+                        borderColor: "rgba(59,130,246,1)", 
+                        backgroundColor: "rgba(59,130,246,0.2)",
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 3,
+                      },
                   ]
               }} 
               options={commonOptions} />
           </CardContent>
         </Card>
 
-        {/* Distribusi Simpanan (Pie Chart) */}
+        {/* Distribusi Simpanan (Pie Chart - DUMMY) */}
         <Card className="h-96">
           <CardHeader>
             <CardTitle className="text-lg font-semibold flex items-center gap-1">
@@ -441,19 +367,21 @@ export default function DashboardPage() {
             {totalSimpanan > 0 ? (
                 <Pie data={simpananPieData} options={pieOptions} />
             ) : (
-                <div className="text-gray-500">Tidak ada data simpanan</div>
+                <div className="text-gray-500 text-sm text-center">
+                  Data simpanan belum tersedia<br/>(Menggunakan data dummy untuk visualisasi)
+                  </div>
             )}
           </CardContent>
         </Card>
       </div>
       
-      {/* Tabel Status Kualitas Pinjaman */}
+      {/* Tabel Status Kualitas Pinjaman (DUMMY) */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg font-semibold flex items-center gap-1">
-            <ListChecks className="h-4 w-4" /> Status Kualitas Pinjaman (Kolektibilitas)
+            <ListChecks className="h-4 w-4" /> Status Kualitas Pinjaman
           </CardTitle>
-          <p className="text-sm text-gray-500">Posisi Outstanding Pinjaman Berdasarkan Kualitas</p>
+          <p className="text-sm text-gray-500">Data Kolektibilitas (Simulasi)</p>
         </CardHeader>
         <CardContent>
             <table className="min-w-full text-sm border-collapse">
@@ -461,17 +389,16 @@ export default function DashboardPage() {
                     <tr>
                         <th className="px-4 py-2 text-left">Kategori</th>
                         <th className="px-4 py-2 text-right">Outstanding Pokok</th>
-                        <th className="px-4 py-2 text-right">Persentase Total</th>
+                        <th className="px-4 py-2 text-right">Persentase</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {/* Simulasi data kolektibilitas */}
                     {[
-                        { label: "Lancar (Kol 1)", nominal: 24250000000, color: "text-green-600" }, // 95%
-                        { label: "Dalam Perhatian Khusus (Kol 2)", nominal: 1000000000, color: "text-yellow-600" }, // ~4%
-                        { label: "Kurang Lancar s/d Macet (Kol 3-5 / NPL)", nominal: 250000000, color: "text-red-600" }, // 1%
+                        { label: "Lancar", nominal: DUMMY_DATA_FALLBACK.kol_lancar, color: "text-green-600" },
+                        { label: "Dalam Perhatian Khusus", nominal: DUMMY_DATA_FALLBACK.kol_dpd, color: "text-yellow-600" },
+                        { label: "Macet", nominal: DUMMY_DATA_FALLBACK.kol_macet, color: "text-red-600" },
                     ].map((item, index) => {
-                        const percent = (item.nominal / totalOutstanding) * 100;
+                        const percent = (item.nominal / totalOutstandingDummy) * 100;
                         return (
                             <tr key={index} className="border-t hover:bg-gray-50">
                                 <td className="px-4 py-2">{item.label}</td>
@@ -485,19 +412,12 @@ export default function DashboardPage() {
                         );
                     })}
                 </tbody>
-                <tfoot className="bg-gray-200 font-bold border-t-2">
-                    <tr>
-                        <td className="px-4 py-2">TOTAL OUTSTANDING</td>
-                        <td className="px-4 py-2 text-right">{formatRupiah(totalOutstanding)}</td>
-                        <td className="px-4 py-2 text-right">100.00%</td>
-                    </tr>
-                </tfoot>
             </table>
         </CardContent>
       </Card>
       
       <p className="text-xs text-gray-500 mt-4">
-        *Data di atas adalah simulasi dummy dan bukan data real-time.
+        *Data Anggota, Total Simpanan, Total Pinjaman, Tagihan Bulan Ini, dan Grafik Garis bersumber dari API Realtime. Data lainnya masih simulasi.
       </p>
     </div>
   );
