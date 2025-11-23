@@ -22,13 +22,6 @@ import {
 import Swal from "sweetalert2";
 import { Pinjaman } from "@/types/admin/pinjaman";
 
-// --- TYPES SESUAI RESPONSE API ---
-
-// Note: Kita menggunakan Type Pinjaman dari @/types/admin/pinjaman langsung
-// Namun kita perlu memastikan interface PinjamanData lokal ini mappingnya benar jika ada custom field
-interface PinjamanData extends Pinjaman {
-    // Tambahan properti frontend helper jika perlu
-}
 
 // --- HELPER FUNCTIONS ---
 

@@ -67,7 +67,7 @@ function extractMessageFromFetchBaseQueryError(
     }
   }
   if ("status" in fbq) {
-    return `Error ${String((fbq as any).status ?? "")}`.trim();
+    return `Error ${String((fbq as FetchBaseQueryError & { status?: unknown }).status ?? "")}`.trim();
   }
   return "Terjadi kesalahan pada server";
 }

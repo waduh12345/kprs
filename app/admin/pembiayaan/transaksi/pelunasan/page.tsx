@@ -217,12 +217,21 @@ export default function PelunasanPembiayaanPage() {
       });
 
       refetchDetail();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Payment Error:", error);
+      let errorMessage = "Terjadi kesalahan saat memproses pelunasan.";
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "data" in error &&
+        typeof (error as { data?: { message?: string } }).data?.message === "string"
+      ) {
+        errorMessage = (error as { data: { message: string } }).data.message;
+      }
       Swal.fire({
         icon: "error",
         title: "Gagal Memproses",
-        text: error?.data?.message || "Terjadi kesalahan saat memproses pelunasan.",
+        text: errorMessage,
         confirmButtonColor: "#dc2626",
       });
     } finally {

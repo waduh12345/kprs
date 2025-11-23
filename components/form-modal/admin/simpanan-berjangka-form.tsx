@@ -36,8 +36,6 @@ const parseNominal = (value: string) => parseFloat(value.replace(/[^0-9]/g, ''))
 
 
 const SimpananBerjangkaModalForm: React.FC<SimpananBerjangkaModalProps> = ({ isOpen, onClose, onSubmit }) => {
-  if (!isOpen) return null;
-
   const today = new Date().toISOString().substring(0, 10);
 
   const [formData, setFormData] = useState<Omit<SimpananBerjangkaFormData, 'jangka_waktu' | 'nominal_awal'> & { jangka_waktu: string, nominal_awal: string }>({
@@ -50,6 +48,8 @@ const SimpananBerjangkaModalForm: React.FC<SimpananBerjangkaModalProps> = ({ isO
 
   const selectedProduct = useMemo(() => DUMMY_PRODUCTS.find(p => p.id === formData.produk), [formData.produk]);
   const nominalValue = useMemo(() => parseNominal(formData.nominal_awal), [formData.nominal_awal]);
+
+  if (!isOpen) return null;
   
   const handleNominalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value.replace(/[^0-9]/g, '');

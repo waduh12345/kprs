@@ -56,6 +56,30 @@ interface WalletData {
   user: WalletUser;
 }
 
+// Interface baru untuk membungkus response lengkap
+interface ApiResponse {
+  data: WalletData[];
+  last_page: number;
+  current_page: number;
+  total: number;
+  per_page: number;
+  from: number;
+  to: number;
+  prev_page_url: string | null;
+  next_page_url: string | null;
+}
+
+interface ApiMeta {
+  last_page: number;
+  current_page: number;
+  total: number;
+  per_page: number;
+  from: number;
+  to: number;
+  prev_page_url: string | null;
+  next_page_url: string | null;
+}
+
 // --- HELPER FUNCTIONS ---
 
 const formatRupiah = (number: number) => {
@@ -86,18 +110,27 @@ export default function LaporanNominatifSimpananPage() {
     search: query,
   });
 
-  // Extract Data
-  const walletData = (apiResponse as { data: WalletData[] } | undefined)?.data || [];
-  const meta = {
-    last_page: (apiResponse as any)?.last_page ?? 1,
-    current_page: (apiResponse as any)?.current_page ?? 1,
-    total: (apiResponse as any)?.total ?? 0,
-    per_page: (apiResponse as any)?.per_page ?? itemsPerPage,
-    from: (apiResponse as any)?.from ?? 0,
-    to: (apiResponse as any)?.to ?? 0,
-    prev_page_url: (apiResponse as any)?.prev_page_url ?? null,
-    next_page_url: (apiResponse as any)?.next_page_url ?? null,
+  // --- FIXED SECTION START: SAFE TYPING ---
+  
+  // Cast response ke tipe yang sudah didefinisikan atau undefined
+  const response = apiResponse as ApiResponse | undefined;
+
+  // Extract Data dengan aman
+  const walletData: WalletData[] = response?.data || [];
+
+  // Construct Meta data tanpa casting berulang yang menyebabkan error linter
+  const meta: ApiMeta = {
+    last_page: response?.last_page ?? 1,
+    current_page: response?.current_page ?? 1,
+    total: response?.total ?? 0,
+    per_page: response?.per_page ?? itemsPerPage,
+    from: response?.from ?? 0,
+    to: response?.to ?? 0,
+    prev_page_url: response?.prev_page_url ?? null,
+    next_page_url: response?.next_page_url ?? null,
   };
+  
+  // --- FIXED SECTION END ---
 
   // --- FILTERING & MAPPING (Client-Side untuk Produk) ---
   const filteredNominatif = useMemo(() => {

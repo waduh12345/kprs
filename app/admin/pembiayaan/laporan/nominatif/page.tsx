@@ -350,7 +350,7 @@ export default function LaporanNominatifPembiayaanPage() {
       </Card>
       
       <p className="text-xs text-gray-500 mt-4">
-        *Laporan Nominatif menyajikan posisi sisa pokok (outstanding) per tanggal laporan. Data "Sisa Pokok" hanya muncul untuk pinjaman yang berstatus <strong>Active (Realisasi)</strong>.
+        *Laporan Nominatif menyajikan posisi sisa pokok (outstanding) per tanggal laporan. Data &quot;Sisa Pokok&quot; hanya muncul untuk pinjaman yang berstatus <strong>Active (Realisasi)</strong>.
       </p>
     </div>
   );

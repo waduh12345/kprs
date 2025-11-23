@@ -95,7 +95,10 @@ export const simpananImportApi = apiSlice.injectEndpoints({
     // 📥 Post untuk Import Excel (Simpanan)
     // URL: /simpanan/import (metode POST)
     importSimpananExcel: builder.mutation<
-      { code: number; message: string },
+      {
+        totalNominal: number;
+        totalRekening: number; code: number; message: string 
+},
       { file: File }
     >({
       query: ({ file }) => {
@@ -114,6 +117,8 @@ export const simpananImportApi = apiSlice.injectEndpoints({
       }) => ({
         code: response.code,
         message: response.message,
+        totalNominal: 0,
+        totalRekening: 0
       }),
     }),
 

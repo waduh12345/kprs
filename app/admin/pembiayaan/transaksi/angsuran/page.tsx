@@ -85,7 +85,7 @@ export default function AngsuranPembiayaanPage() {
   const [createPaymentHistory] = useCreatePaymentHistoryMutation();
   const [updatePaymentStatus] = useUpdatePaymentStatusMutation();
 
-  const pinjamanDetail = (detailResponse as any) || null;
+  const pinjamanDetail = (detailResponse) || null;
 
   // --- EFFECT & MEMO ---
   useEffect(() => {
@@ -103,11 +103,11 @@ export default function AngsuranPembiayaanPage() {
 
   const billingInfo = useMemo(() => {
     if (!pinjamanDetail || !pinjamanDetail.details) return null;
-    const nextBill = pinjamanDetail.details.find((d: any) => d.status === false); // false = Belum Lunas
+    const nextBill = pinjamanDetail.details.find((d: PinjamanInstallment) => d.status === false); // false = Belum Lunas
     const outstandingTotal = pinjamanDetail.details
-      .filter((d: any) => d.status === false)
-      .reduce((acc: number, curr: any) => acc + curr.remaining, 0);
-    const unpaidMonthsCount = pinjamanDetail.details.filter((d: any) => d.status === false).length;
+      .filter((d: PinjamanInstallment) => d.status === false)
+      .reduce((acc: number, curr: PinjamanInstallment) => acc + curr.remaining, 0);
+    const unpaidMonthsCount = pinjamanDetail.details.filter((d: PinjamanInstallment) => d.status === false).length;
     const today = new Date();
     const isLate = nextBill ? new Date(nextBill.due_date) < today : false;
 
@@ -214,12 +214,28 @@ export default function AngsuranPembiayaanPage() {
       });
 
       refetchDetail(); // Refresh data agar UI terupdate
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Payment Error:", error);
+      let errorMessage = "Terjadi kesalahan saat memproses pembayaran.";
+      interface ErrorWithMessage {
+        data?: {
+          message?: string;
+        };
+      }
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "data" in error &&
+        typeof (error as ErrorWithMessage).data === "object" &&
+        (error as ErrorWithMessage).data !== null &&
+        "message" in (error as ErrorWithMessage).data!
+      ) {
+        errorMessage = (error as ErrorWithMessage).data?.message || errorMessage;
+      }
       Swal.fire({
         icon: "error",
         title: "Gagal Membayar",
-        text: error?.data?.message || "Terjadi kesalahan saat memproses pembayaran.",
+        text: errorMessage,
         confirmButtonColor: "#dc2626",
       });
     } finally {
