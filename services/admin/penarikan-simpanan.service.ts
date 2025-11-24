@@ -106,7 +106,7 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
     // 🔄 Update Status Penarikan
     updatePenarikanStatus: builder.mutation<
       PenarikanSimpanan,
-      { id: number; status: string }
+      { id: number; status: number }
     >({
       query: ({ id, status }) => ({
         url: `/wallet/withdrawals/${id}/status`,

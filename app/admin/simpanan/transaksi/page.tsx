@@ -36,6 +36,7 @@ import { formatRupiah } from "@/lib/format-utils";
 import {
   useGetWalletListQuery,
   useCreatePenarikanSimpananWalletMutation,
+  useUpdatePenarikanStatusMutation
 } from "@/services/admin/penarikan-simpanan.service";
 
 import { useCreateSimpananSetoranMutation, useUpdateSimpananStatusMutation } from "@/services/admin/simpanan/simpanan.service";
@@ -124,6 +125,7 @@ export default function TransaksiSimpananPage() {
   // =====================================================================
   const [createSetoran, { isLoading: loadingSetor }] = useCreateSimpananSetoranMutation();
   const [createPenarikan, { isLoading: loadingTarik }] = useCreatePenarikanSimpananWalletMutation();
+  const [updatePenarikanStatus] = useUpdatePenarikanStatusMutation();
   const [updateSimpananStatus] = useUpdateSimpananStatusMutation();
 
   const isSearching = walletFetching || walletLoading;
@@ -243,17 +245,21 @@ export default function TransaksiSimpananPage() {
           description: keterangan || "Penarikan Tunai",
         };
 
-        await createPenarikan(payload).unwrap();
+        const response = await createPenarikan(payload).unwrap();
+        const id = Number(response?.id);
+        if (id) {
+          await updatePenarikanStatus({ id, status: 1 }).unwrap();
+        }
         await Swal.fire("Berhasil", `Penarikan ${formatRupiah(nominalTransaksi)} berhasil diproses.`, "success");
       }
 
       // --- Post Success Actions ---
-      // refetchWallet();
-      // setNominalInput("");
-      // setKeterangan("");
-      // setBankName("");
-      // setBankAccountName("");
-      // setBankAccountNumber("");
+      refetchWallet();
+      setNominalInput("");
+      setKeterangan("");
+      setBankName("");
+      setBankAccountName("");
+      setBankAccountNumber("");
 
     } catch (err) {
       console.error(err);
