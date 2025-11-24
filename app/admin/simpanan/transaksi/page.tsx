@@ -235,7 +235,7 @@ export default function TransaksiSimpananPage() {
         // --- LOGIKA PENARIKAN ---
         const payload = {
           user_id: (dataRekening.user?.id as number) ?? 0,
-          // wallet_id: dataRekening.id, // Opsional: jika backend butuh ID wallet
+          wallet_id: dataRekening.id, // Opsional: jika backend butuh ID wallet
           bank_name: bankName,
           bank_account_name: bankAccountName,
           bank_account_number: bankAccountNumber,
