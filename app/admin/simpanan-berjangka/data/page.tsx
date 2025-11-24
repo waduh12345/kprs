@@ -12,7 +12,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { HistoryIcon, PlusCircle, Clock, FileDown } from "lucide-react";
+import {
+  HistoryIcon,
+  PlusCircle,
+  Clock,
+  FileDown,
+  XCircle,
+  CheckCircle,
+} from "lucide-react";
 import Swal from "sweetalert2";
 
 // helper format
@@ -25,7 +32,7 @@ const formatRupiah = (number: number) => {
 };
 
 // Pastikan tipe status di SimpananBerjangka sudah diperbarui di file types
-type SimpananBerjangkaStatus = "Aktif" | "Jatuh Tempo" | "Tidak Aktif";
+type SimpananBerjangkaStatus = "Disetujui" | "Ditolak" | "Pending";
 
 // Gunakan tipe SimpananBerjangka dari file types
 // Asumsi: SimpananBerjangka dari types/admin/simpanan/simpanan-berjangka.ts
@@ -34,14 +41,17 @@ import { SimpananBerjangka } from "@/types/admin/simpanan/simpanan-berjangka";
 const statusVariant = (
   status: SimpananBerjangkaStatus
 ): "success" | "destructive" | "default" | "secondary" => {
-  if (status === "Aktif") return "success";
-  if (status === "Jatuh Tempo") return "default"; // Atau warna lain
-  if (status === "Tidak Aktif") return "destructive"; // Atau warna lain
+  if (status === "Disetujui") return "success";
+  if (status === "Ditolak") return "destructive"; // Atau warna lain
+  if (status === "Pending") return "secondary"; // Atau warna lain
   return "secondary";
 };
 
 // --- NEW: import service hook untuk fetching (pastikan path sesuai projectmu) ---
-import { useGetSimpananBerjangkaListQuery } from "@/services/admin/simpanan/simpanan-berjangka.service";
+import {
+  useGetSimpananBerjangkaListQuery,
+  useValidateSimpananBerjangkaMutation,
+} from "@/services/admin/simpanan/simpanan-berjangka.service";
 import { displayDate } from "@/lib/format-utils";
 // import form component (modal)
 import SimpananBerjangkaForm from "@/components/form-modal/simpanan-berjangka-form";
@@ -74,6 +84,110 @@ export default function SimpananBerjangkaPage() {
     SimpananBerjangkaStatus | "all"
   >("all");
   const modalRef = useRef<HTMLDivElement | null>(null);
+
+  // State untuk modal approval
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [itemToApprove, setItemToApprove] = useState<SimpananBerjangka | null>(
+    null
+  );
+  const [approvalDate, setApprovalDate] = useState<string>("");
+
+  // Menambahkan hook untuk validasi (approval)
+  const [validateSimpananBerjangka, { isLoading: isValidating }] =
+    useValidateSimpananBerjangkaMutation();
+
+  // Handler untuk membuka modal approval
+  const handleOpenApprovalModal = (item: SimpananBerjangka) => {
+    setItemToApprove(item);
+    setApprovalDate(new Date().toISOString().split("T")[0]); // Set default tanggal approval ke hari ini
+    setApprovalModalOpen(true);
+  };
+
+  // Handler untuk submit approval
+  const handleSubmitApproval = async () => {
+    if (!itemToApprove || !approvalDate) {
+      Swal.fire("Peringatan", "Tanggal persetujuan harus diisi", "warning");
+      return;
+    }
+
+    try {
+      // Memanggil mutation untuk validasi simpanan berjangka
+      await validateSimpananBerjangka({
+        id: itemToApprove.id,
+        data: { approval_date: approvalDate },
+      }).unwrap();
+
+      setApprovalModalOpen(false); // Menutup modal setelah sukses
+      setItemToApprove(null);
+      Swal.fire("Berhasil", "Simpanan Berjangka disetujui", "success");
+      refetch(); // Refetch data untuk memperbarui status
+    } catch (error) {
+      Swal.fire("Gagal", "Gagal menyetujui Simpanan Berjangka", "error");
+      console.error(error);
+    }
+  };
+
+  // Handler untuk approve dengan konfirmasi yang lebih menarik
+  const handleApprove = async (item: SimpananBerjangkaUIData) => {
+    const confirm = await Swal.fire({
+      title: "Apakah Anda yakin ingin menyetujui Simpanan Berjangka?",
+      text: `Referensi: ${item.reference}\nAnggota: ${
+        item.user_name
+      }\nNominal: ${formatRupiah(item.nominal)}\nTanggal Mulai: ${displayDate(
+        item.date
+      )}`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Setujui",
+      cancelButtonText: "Batal",
+    });
+
+    if (confirm.isConfirmed) {
+      try {
+        // Memanggil mutation untuk menyetujui simpanan berjangka (status 1)
+        await validateSimpananBerjangka({
+          id: item.id,
+          data: { status: 1 }, // Status menjadi "Disetujui" (1)
+        }).unwrap();
+        Swal.fire("Berhasil", "Simpanan Berjangka disetujui", "success");
+        refetch(); // Refresh data setelah update status
+      } catch (error) {
+        Swal.fire("Gagal", "Gagal menyetujui Simpanan Berjangka", "error");
+        console.error(error);
+      }
+    }
+  };
+
+  // Handler untuk reject dengan konfirmasi yang lebih menarik
+  const handleReject = async (item: SimpananBerjangkaUIData) => {
+    const confirm = await Swal.fire({
+      title: "Apakah Anda yakin ingin menolak Simpanan Berjangka?",
+      text: `Referensi: ${item.reference}\nAnggota: ${
+        item.user_name
+      }\nNominal: ${formatRupiah(item.nominal)}\nTanggal Mulai: ${displayDate(
+        item.date
+      )}`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Ya, Tolak",
+      cancelButtonText: "Batal",
+    });
+
+    if (confirm.isConfirmed) {
+      try {
+        // Memanggil mutation untuk menolak simpanan berjangka (status -1)
+        await validateSimpananBerjangka({
+          id: item.id,
+          data: { status: -1 }, // Status menjadi "Ditolak" (-1)
+        }).unwrap();
+        Swal.fire("Berhasil", "Simpanan Berjangka ditolak", "success");
+        refetch(); // Refresh data setelah update status
+      } catch (error) {
+        Swal.fire("Gagal", "Gagal menolak Simpanan Berjangka", "error");
+        console.error(error);
+      }
+    }
+  };
 
   useEffect(() => {
     // jika modal terbuka -> lock body scroll dan fokus input pertama
@@ -148,11 +262,11 @@ export default function SimpananBerjangkaPage() {
     // 0: Tidak Aktif (bisa juga Pending/Selesai), 1: Aktif, 2: Jatuh Tempo (asumsi)
     let statusLabel: SimpananBerjangkaStatus;
     if (item.status === 1) {
-      statusLabel = "Aktif";
-    } else if (item.status === 2) {
-      statusLabel = "Jatuh Tempo";
+      statusLabel = "Disetujui";
+    } else if (item.status === -1) {
+      statusLabel = "Ditolak";
     } else {
-      statusLabel = "Tidak Aktif"; // Asumsi status 0 atau lainnya adalah Tidak Aktif
+      statusLabel = "Pending"; // Asumsi status 0 atau lainnya adalah Tidak Aktif
     }
 
     // Fallback: Jika ada data dari payment dan paid_at null, bisa dianggap Pending/Tidak Aktif.
@@ -376,6 +490,41 @@ export default function SimpananBerjangkaPage() {
                                 </TooltipContent>
                               </Tooltip>
 
+                              {/* Tombol Approve dan Reject hanya muncul jika status Pending */}
+                              {item.status === "Pending" && (
+                                <>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleApprove(item)} // Approve
+                                        className="bg-green-600 hover:bg-green-700"
+                                      >
+                                        <CheckCircle className="size-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Approve Simpanan</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleReject(item)} // Reject
+                                        className="bg-red-600 hover:bg-red-700"
+                                      >
+                                        <XCircle className="size-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Reject Simpanan</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </>
+                              )}
+
                               {/* History Transaksi */}
                               {/* <Tooltip>
                                 <TooltipTrigger asChild>
@@ -433,7 +582,6 @@ export default function SimpananBerjangkaPage() {
           </div>
         </CardContent>
       </Card>
-
       {/* Modal / Form */}
       {showForm && (
         // overlay
@@ -477,6 +625,75 @@ export default function SimpananBerjangkaPage() {
               onSuccess={() => onFormSuccess()}
               onCancel={() => onFormCancel()}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Modal Approval */}
+      {approvalModalOpen && itemToApprove && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
+            <div className="flex justify-between items-center mb-4 border-b pb-2">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                Konfirmasi Persetujuan
+              </h2>
+              <button
+                onClick={() => {
+                  setApprovalModalOpen(false);
+                  setItemToApprove(null);
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-green-50 p-3 rounded border border-green-200">
+                <p className="text-sm text-green-800">
+                  Anda akan menyetujui Simpanan Berjangka untuk:
+                </p>
+                <p className="font-bold text-green-900">
+                  {itemToApprove.user_name}
+                </p>
+                <p className="text-sm text-green-800">
+                  Nominal: {formatRupiah(itemToApprove.nominal)}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  Tanggal Disetujui (Approval Date){" "}
+                  <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={approvalDate}
+                  onChange={(e) => setApprovalDate(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setApprovalModalOpen(false);
+                    setItemToApprove(null);
+                  }}
+                >
+                  Batal
+                </Button>
+                <Button
+                  onClick={handleSubmitApproval}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={isValidating} // Disable button while validating
+                >
+                  Setujui Simpanan Berjangka
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

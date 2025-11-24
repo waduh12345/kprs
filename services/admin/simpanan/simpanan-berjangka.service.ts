@@ -226,6 +226,26 @@ export const simpananBerjangkaApi = apiSlice.injectEndpoints({
         { type: "SimpananBerjangka" as const, id: "LIST" },
       ],
     }),
+
+    // Validate (PUT /simpanan/berjangka/:id/validate)
+    validateSimpananBerjangka: builder.mutation<
+      { code: number; message: string; data?: unknown },
+      { id: number; data?: Record<string, unknown> }
+    >({
+      query: ({ id, data = {} }) => {
+        const body = compactBody(data);
+        // jika body kosong, tetap kirim PUT tanpa body
+        return {
+          url: `simpanan/berjangka/${id}/validate`,
+          method: "PUT",
+          body: Object.keys(body).length ? body : undefined,
+        };
+      },
+      invalidatesTags: (result, error, { id }) => [
+        { type: "SimpananBerjangka" as const, id },
+        { type: "SimpananBerjangka" as const, id: "LIST" },
+      ],
+    }),
   }),
   overrideExisting: false,
 });
@@ -236,4 +256,5 @@ export const {
   useCreateSimpananBerjangkaMutation,
   useUpdateSimpananBerjangkaMutation,
   useDeleteSimpananBerjangkaMutation,
+  useValidateSimpananBerjangkaMutation,
 } = simpananBerjangkaApi;
