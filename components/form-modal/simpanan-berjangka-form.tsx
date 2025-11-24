@@ -64,7 +64,11 @@ export default function SimpananBerjangkaForm({
     paginate: 100,
     page: 1,
   });
-  const anggotaQuery = useGetAnggotaListQuery({ paginate: 100, page: 1 });
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const anggotaQuery = useGetAnggotaListQuery(
+    { paginate: 100, page: 1, search: searchQuery },
+    { skip: !searchQuery || searchQuery.length < 2 } // Skip query jika searchQuery belum 2 karakter
+  );
 
   // kategoriOptions (typed: Category[])
   const kategoriOptions = useMemo<Category[]>(() => {
@@ -93,6 +97,10 @@ export default function SimpananBerjangkaForm({
 
     return Array.isArray(resp.data) ? resp.data : resp.data.data ?? [];
   }, [anggotaQuery.data]);
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+  };
 
   // ambil data by id kalau edit
   const byIdQuery = useGetSimpananBerjangkaByIdQuery(
@@ -306,7 +314,7 @@ export default function SimpananBerjangkaForm({
             <Combobox<Anggota>
               value={form.user_id ?? null}
               onChange={(v) => setField("user_id", v)}
-              onSearchChange={undefined}
+              onSearchChange={handleSearchChange}
               data={anggotaOptions}
               isLoading={anggotaQuery.isLoading}
               placeholder="Pilih anggota..."
