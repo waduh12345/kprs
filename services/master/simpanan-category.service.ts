@@ -17,14 +17,16 @@ export const simpananCategoryApi = apiSlice.injectEndpoints({
         total: number;
         per_page: number;
       },
-      { page: number; paginate: number }
+      { page: number; paginate: number; orderBy?: string; order?: "asc" | "desc" }
     >({
-      query: ({ page, paginate }) => ({
+      query: ({ page, paginate, orderBy, order }) => ({
         url: `/master/simpanan-categories`,
         method: "GET",
         params: {
           page,
           paginate,
+          orderBy,
+          order,
         },
       }),
       transformResponse: (response: SimpananCategoryResponse) => ({

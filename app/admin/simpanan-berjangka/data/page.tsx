@@ -377,7 +377,7 @@ export default function SimpananBerjangkaPage() {
                               </Tooltip>
 
                               {/* History Transaksi */}
-                              <Tooltip>
+                              {/* <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
                                     size="sm"
@@ -394,7 +394,7 @@ export default function SimpananBerjangkaPage() {
                                 <TooltipContent>
                                   <p>History Transaksi</p>
                                 </TooltipContent>
-                              </Tooltip>
+                              </Tooltip> */}
                             </div>
                           }
                         />

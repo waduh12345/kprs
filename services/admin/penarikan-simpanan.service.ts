@@ -163,6 +163,16 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
       transformResponse: (response: ApiResponse<Wallet>) => response.data,
     }),
 
+    // ➕ Create Simpanan (Input)
+    createSimpananWallet: builder.mutation<Wallet, CreateSimpananRequest>({
+      query: (payload) => ({
+        url: `/wallet`,
+        method: "POST",
+        body: payload,
+      }),
+      transformResponse: (response: ApiResponse<Wallet>) => response.data,
+    }),
+
     // 🔎 Get Wallet By ID
     getWalletById: builder.query<Wallet, number>({
       query: (id) => ({
@@ -267,6 +277,7 @@ export const {
   // wallet
   useGetWalletListQuery,
   useCreateSimpananMutation,
+  useCreateSimpananWalletMutation,
   useGetWalletByIdQuery,
   useUpdateWalletMutation,
   useDeleteWalletMutation,

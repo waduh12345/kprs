@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import useModal from "@/hooks/use-modal";
 import {
   useGetWalletListQuery,
-  useCreateSimpananMutation,
+  useCreateSimpananWalletMutation,
   useUpdateWalletMutation,
   useDeleteWalletMutation,
 } from "@/services/admin/penarikan-simpanan.service";
@@ -55,10 +55,17 @@ export default function SimpananAnggotaPage() {
     paginate: itemsPerPage,
   });
 
+  // Refetch data simpanan setiap kali currentPage berubah
+  useEffect(() => {
+    refetch();
+  }, [currentPage, refetch]);
+
   // categories for reference_id selection
   const categoriesQuery = useGetSimpananCategoryListQuery({
     page: 1,
     paginate: 100,
+    orderBy: "code",
+    order: "asc",
   });
   const categories = categoriesQuery.data?.data ?? [];
 
@@ -124,7 +131,7 @@ export default function SimpananAnggotaPage() {
   const [filterAnggotaId, setFilterAnggotaId] = useState<number | null>(null);
 
   // mutations
-  const [createSimpanan, { isLoading: creating }] = useCreateSimpananMutation();
+  const [createSimpanan, { isLoading: creating }] = useCreateSimpananWalletMutation();
   const [updateSimpanan, { isLoading: updating }] = useUpdateWalletMutation();
   const [deleteSimpanan] = useDeleteWalletMutation();
 
