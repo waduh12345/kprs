@@ -150,8 +150,8 @@ export default function PinjamanAnggotaPage() {
         Swal.fire("Sukses", "Pinjaman ditambahkan", "success");
       }
 
-      setForm({});
-      setEditingId(null);
+      // setForm({});
+      // setEditingId(null);
       await refetch();
       closeModal();
     } catch (error) {
@@ -651,13 +651,10 @@ export default function PinjamanAnggotaPage() {
                       />
                     </td>
                     <td className="px-4 py-2">{item.reference}</td>
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2 min-w-[150px]">
                       <div>
                         <div className="font-medium">
-                          {getUserName(item.user_id)}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {getUserEmail(item.user_id)}
+                          { item.user_name }
                         </div>
                       </div>
                     </td>

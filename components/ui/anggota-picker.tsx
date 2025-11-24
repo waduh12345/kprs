@@ -63,12 +63,12 @@ export function AnggotaPicker({
       (u) =>
         (u.name ?? "").toLowerCase().includes(q) ||
         (u.email ?? "").toLowerCase().includes(q) ||
-        String(u.id).includes(q)
+        String(u.user_id).includes(q)
     );
   }, [list, debouncedQuery]);
 
   const selected = useMemo(
-    () => list.find((u) => u.id === selectedId) || null,
+    () => list.find((u) => u.user_id === selectedId) || null,
     [list, selectedId]
   );
 
@@ -173,8 +173,8 @@ export function AnggotaPicker({
                         : filtered
                       ).map((u) => (
                         <CommandItem
-                          key={u.id}
-                          value={u.name ?? String(u.id)}
+                          key={u.user_id}
+                          value={u.name ?? String(u.user_id)}
                           onSelect={() => pick(u)}
                           className="cursor-pointer"
                         >
@@ -183,7 +183,7 @@ export function AnggotaPicker({
                               {u.name ?? "Tanpa Nama"}
                             </span>
                             <span className="text-xs text-neutral-500">
-                              {u.email ?? "-"} • ID: {u.id}
+                              {u.email ?? "-"} • ID: {u.user_id}
                             </span>
                           </div>
                         </CommandItem>

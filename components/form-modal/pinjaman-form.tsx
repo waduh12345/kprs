@@ -13,6 +13,7 @@ import { Combobox } from "@/components/ui/combo-box"; // Pastikan path ini sesua
 /* ===================== Anggota Picker (min 3 char, sama spt SimpananForm) ===================== */
 export type Anggota = {
   id: number;
+  user_id: number;
   name?: string | null;
   email?: string | null;
   status?: number | null;
@@ -148,7 +149,7 @@ export default function FormPinjaman({
           <AnggotaPicker
             selectedId={typeof form.user_id === "number" ? form.user_id : null}
             onChange={(u) =>
-              setForm({ ...form, user_id: u ? Number(u.id) : undefined })
+              setForm({ ...form, user_id: u ? Number(u.user_id) : undefined })
             }
             disabled={readonly}
           />
