@@ -204,13 +204,12 @@ export default function LaporanMutasiSimpananPage() {
                         Reff ID: {item.source_id} • Wallet ID: {item.wallet_id}
                       </p>
                     </td>
-                    {/* Kolom DEBIT */}
-                    <td className="px-4 py-3 text-right font-semibold text-blue-700 bg-blue-50/30">
-                      {isDebit ? formatRupiah(item.amount) : "-"}
-                    </td>
                     {/* Kolom KREDIT */}
                     <td className="px-4 py-3 text-right font-semibold text-green-700 bg-green-50/30">
                       {isCredit ? formatRupiah(item.amount) : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-blue-700 bg-blue-50/30">
+                      {isDebit ? formatRupiah(item.amount) : "-"}
                     </td>
                   </tr>
                 );

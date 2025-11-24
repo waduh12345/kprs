@@ -303,11 +303,11 @@ export default function LaporanMutasiPembiayaanPage() {
                           {styles.icon} {styles.label}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-right font-semibold text-red-600">
-                        {debitAmount > 0 ? formatRupiah(debitAmount) : "-"}
-                      </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right font-semibold text-green-600">
                         {creditAmount > 0 ? formatRupiah(creditAmount) : "-"}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-right font-semibold text-red-600">
+                        {debitAmount > 0 ? formatRupiah(debitAmount) : "-"}
                       </td>
                       <td className="px-4 py-3 max-w-[300px] truncate" title={item.description}>
                         {item.description}
