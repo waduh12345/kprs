@@ -1,4 +1,5 @@
 export interface CoaKoperasi {
+  coa_id?: string | null;
   code: string;
   name: string;
   description: string;

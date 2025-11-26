@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -22,14 +22,14 @@ import Swal from "sweetalert2";
 import { Badge } from "@/components/ui/badge";
 
 import {
-  useGetJournalListQuery,
+  useLazyGetJournalListQuery,
   useGetJournalByIdQuery,
   useUpdateJournalMutation,
   Journal,
   UpdateJournalRequest,
-} from "@/services/admin/journal.service"; // sesuaikan path jika perlu
+} from "@/services/admin/journal.service"; 
 
-// --- TYPES untuk tampilan (tetap sama bentuk UI sebelumnya) ---
+// --- TYPES ---
 interface JurnalPosted {
   no_bukti: string;
   tanggal: string;
@@ -50,56 +50,32 @@ const formatRupiah = (number: number) => {
   }).format(number);
 };
 
-// --- KOMPONEN UTAMA ---
 export default function PembatalanJurnalPage() {
+  // --- STATE ---
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [searchArgs, setSearchArgs] = useState<{
-    page: number;
-    paginate: number;
-    orderBy: string;
-    order: string;
-    searchBySpecific: string;
-    search: string;
-  }>({
-    page: 1,
-    paginate: 10,
-    orderBy: "updated_at",
-    order: "desc",
-    searchBySpecific: "",
-    search: "",
-  });
-
-  const [foundJournalView, setFoundJournalView] = useState<JurnalPosted | null>(
-    null
-  );
-  const [isSearching, setIsSearching] = useState<boolean>(false);
-  const [isReversing, setIsReversing] = useState<boolean>(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-
-  // 1) Query list - triggered when user sets searchArgs
-  const {
-    data: journalListResponse,
-    isFetching: isFetchingList,
-    isError: isErrorList,
-    error: errorList,
-  } = useGetJournalListQuery(searchArgs);
-
-  // 2) selectedId untuk get by id
+  const [foundJournalView, setFoundJournalView] = useState<JurnalPosted | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [isReversing, setIsReversing] = useState<boolean>(false);
 
-  // guard usage with skip option (no 'any' used)
-  const idForQuery = selectedId ?? 0;
+  // --- API HOOKS ---
+  // 1. Lazy Query untuk Search List
+  const [triggerSearch, { isFetching: isSearching }] = useLazyGetJournalListQuery();
+
+  // 2. Query Detail (Otomatis jalan jika selectedId ada isinya)
   const {
     data: journalById,
     isFetching: isFetchingById,
     isError: isErrorById,
-    error: errorById,
-  } = useGetJournalByIdQuery(idForQuery, { skip: selectedId === null });
+  } = useGetJournalByIdQuery(selectedId ?? 0, { 
+    skip: selectedId === null, // Skip jika ID null
+    refetchOnMountOrArgChange: true // Pastikan data baru selalu diambil
+  });
 
-  // 3) mutation update
+  // 3. Mutation Update
   const [updateJournal, { isLoading: isUpdating }] = useUpdateJournalMutation();
 
-  // map Journal (service) -> JurnalPosted for display
+  // --- MAPPER FUNCTION ---
   const mapJournalToView = (j: Journal): JurnalPosted => {
     const details = j.details ?? [];
     const total = details.reduce(
@@ -125,110 +101,81 @@ export default function PembatalanJurnalPage() {
     };
   };
 
-  // EFFECT: when journalListResponse changes as a result of a search request, handle it
-  useEffect(() => {
-    if (!isFetchingList && searchArgs.searchBySpecific === "reference") {
-      if (
-        journalListResponse &&
-        Array.isArray(journalListResponse.data) &&
-        journalListResponse.data.length > 0
-      ) {
-        const first = journalListResponse.data[0];
-        setSelectedId(first.id);
-        setSearchError(null);
+  // --- HANDLER SEARCH ---
+  const handleSearch = async () => {
+    // 1. Validasi Input
+    if (!searchQuery.trim()) {
+      Swal.fire({ icon: "warning", title: "Input Kosong", text: "Masukkan Nomor Bukti Jurnal." });
+      return;
+    }
+
+    // 2. RESET SEMUA STATE TAMPILAN (PENTING!)
+    // Ini memastikan data lama hilang dulu sebelum mencari yang baru
+    setFoundJournalView(null);
+    setSelectedId(null); 
+    setSearchError(null);
+
+    try {
+      // 3. Panggil API Search
+      const result = await triggerSearch({
+        page: 1,
+        paginate: 10,
+        orderBy: "updated_at",
+        order: "desc",
+        searchBySpecific: "reference",
+        search: searchQuery.trim(),
+      }).unwrap();
+
+      const journalList = result.data || [];
+
+      // 4. Logika Hasil Pencarian
+      if (Array.isArray(journalList) && journalList.length > 0) {
+        // KETEMU: Set ID agar query detail berjalan
+        const firstJournal = journalList[0];
+        setSelectedId(firstJournal.id); 
       } else {
-        setSelectedId(null);
-        setFoundJournalView(null);
-        const msg = `Nomor Bukti Jurnal ${searchArgs.search} tidak ditemukan.`;
+        // TIDAK KETEMU: Tampilkan Error, data view tetap null (karena sudah di-reset di langkah 2)
+        const msg = `Nomor Bukti "${searchQuery}" tidak ditemukan.`;
         setSearchError(msg);
         Swal.fire({ icon: "error", title: "Tidak Ditemukan", text: msg });
       }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    journalListResponse,
-    isFetchingList,
-    searchArgs.searchBySpecific,
-    searchArgs.search,
-  ]);
 
-  // EFFECT: when getById returns data, map & set view
-  useEffect(() => {
-    if (!isFetchingById && journalById && selectedId !== null) {
-      const view = mapJournalToView(journalById);
-      if (view.status === "Batal") {
-        const msg = `Jurnal ${view.no_bukti} sudah dibatalkan sebelumnya.`;
-        setSearchError(msg);
-        setFoundJournalView(null);
-        Swal.fire({ icon: "info", title: "Sudah Batal", text: msg });
-      } else {
-        setFoundJournalView(view);
-        setSearchError(null);
-      }
-    } else if (!isFetchingById && isErrorById) {
-      const e = errorById as unknown;
-      const text = JSON.stringify(e, null, 2);
-      Swal.fire({
-        icon: "error",
-        title: "Error",
-        html: `<pre style="text-align:left">${text}</pre>`,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [journalById, isFetchingById, isErrorById, errorById, selectedId]);
-
-  // HANDLE search button
-  const handleSearch = () => {
-    if (!searchQuery.trim()) {
-      const msg = "Masukkan Nomor Bukti Jurnal.";
+    } catch (error) {
+      console.error(error);
+      const msg = "Terjadi kesalahan koneksi atau server.";
       setSearchError(msg);
-      setFoundJournalView(null);
-      Swal.fire({ icon: "warning", title: "Input kosong", text: msg });
-      return;
     }
-
-    setIsSearching(true);
-    setFoundJournalView(null);
-    setSelectedId(null);
-    setSearchError(null);
-
-    setSearchArgs({
-      page: 1,
-      paginate: 10,
-      orderBy: "updated_at",
-      order: "desc",
-      searchBySpecific: "reference",
-      search: searchQuery.trim(),
-    });
   };
 
+  // --- EFFECT: DATA DETAIL MASUK ---
+  // Effect ini hanya jalan jika `journalById` berhasil didapat dari API
   useEffect(() => {
-    if (!isFetchingList) {
-      setIsSearching(false);
-    }
-  }, [isFetchingList]);
+    if (selectedId !== null && journalById && !isFetchingById) {
+      const view = mapJournalToView(journalById);
 
-  // HANDLE cancel (update is_posted -> 0) but include date, description, details to satisfy backend validation
-  const handleBatalJurnal = async () => {
-    if (!foundJournalView) return;
-    if (selectedId === null || journalById === undefined) {
-      Swal.fire({
-        icon: "error",
-        title: "Gagal",
-        text: "ID atau data jurnal tidak ditemukan.",
-      });
-      return;
+      // Cek Status Pembatalan
+      if (view.status === "Batal") {
+        setSearchError(`Jurnal ${view.no_bukti} sudah dibatalkan (Status: Batal).`);
+        setFoundJournalView(null); // Jangan tampilkan detail jika sudah batal
+      } else {
+        setFoundJournalView(view); // Tampilkan detail jika status Posted
+        setSearchError(null);
+      }
     }
+  }, [journalById, isFetchingById, selectedId]);
+
+
+  // --- HANDLER PEMBATALAN ---
+  const handleBatalJurnal = async () => {
+    if (!foundJournalView || selectedId === null || !journalById) return;
 
     const { isConfirmed } = await Swal.fire({
-      title: "Konfirmasi Pembatalan Jurnal",
-      html: `
-        Anda akan membatalkan Jurnal <b>${foundJournalView.no_bukti}</b> (${foundJournalView.deskripsi}).
-        <p class="mt-2 text-red-600 font-semibold">Pembatalan akan mengubah status is_posted menjadi 0.</p>
-      `,
+      title: "Konfirmasi Pembatalan",
+      html: `Anda yakin ingin membatalkan jurnal <b>${foundJournalView.no_bukti}</b>?`,
       icon: "warning",
       showCancelButton: true,
-      confirmButtonText: "Proses Pembatalan",
+      confirmButtonText: "Ya, Batalkan",
+      confirmButtonColor: "#d33",
     });
 
     if (!isConfirmed) return;
@@ -236,62 +183,34 @@ export default function PembatalanJurnalPage() {
     setIsReversing(true);
 
     try {
-      // susun payload UpdateJournalRequest berdasarkan journalById (backend minta date, description, details)
-      const detailsFromApi = journalById.details ?? [];
-
-      const detailsPayload = detailsFromApi.map((d) => ({
-        coa_id: d.coa_id,
-        type: d.type,
-        debit: d.debit ?? 0,
-        credit: d.credit ?? 0,
-        memo: d.memo ?? "",
-      }));
-
-      // gunakan full ISO date atau potong ke YYYY-MM-DD sesuai backend; contoh backend contoh create memakai "2025-06-16"
-      const datePayload = journalById.date
-        ? journalById.date.substring(0, 10)
-        : new Date().toISOString().substring(0, 10);
-
+      // Payload sesuai kebutuhan backend
       const payload: UpdateJournalRequest = {
-        date: datePayload,
+        date: journalById.date ? journalById.date.substring(0, 10) : new Date().toISOString().substring(0, 10),
         description: journalById.description ?? "",
-        details: detailsPayload,
-        is_posted: 0, // set to 0 untuk batal
+        details: (journalById.details ?? []).map(d => ({
+          coa_id: d.coa_id,
+          type: d.type,
+          debit: d.debit ?? 0,
+          credit: d.credit ?? 0,
+          memo: d.memo ?? ""
+        })),
+        is_posted: 0, // Set status ke unposted/batal
       };
 
-      // panggil update
       await updateJournal({ id: selectedId, data: payload }).unwrap();
 
-      setIsReversing(false);
-      Swal.fire({
-        icon: "success",
-        title: "Pembatalan Berhasil",
-        text: `Jurnal ${foundJournalView.no_bukti} berhasil dibatalkan.`,
-      });
-
-      // reset UI
+      Swal.fire("Sukses", "Jurnal berhasil dibatalkan.", "success");
+      
+      // Reset Total setelah sukses
       setFoundJournalView(null);
-      setSearchQuery("");
       setSelectedId(null);
-      setSearchArgs((s) => ({ ...s, searchBySpecific: "", search: "" }));
+      setSearchQuery("");
+      
     } catch (err) {
+      console.error(err);
+      Swal.fire("Gagal", "Gagal membatalkan jurnal.", "error");
+    } finally {
       setIsReversing(false);
-
-      const msg = (() => {
-        if (err === null || err === undefined) return "Unknown error";
-        if (typeof err === "string") return err;
-        try {
-          return JSON.stringify(err, null, 2);
-        } catch {
-          return String(err);
-        }
-      })();
-
-      Swal.fire({
-        icon: "error",
-        title: "Gagal Pembatalan",
-        html: `<pre style="text-align:left; white-space:pre-wrap;">${msg}</pre>`,
-      });
     }
   };
 
@@ -302,162 +221,135 @@ export default function PembatalanJurnalPage() {
         Pembatalan Jurnal (Reversal)
       </h2>
 
-      {/* --- KARTU PENCARIAN --- */}
+      {/* --- PENCARIAN --- */}
       <Card className="shadow-lg border-t-4 border-indigo-500">
         <CardHeader>
           <CardTitle className="text-xl flex items-center gap-2 text-indigo-600">
-            <Search className="h-5 w-5" /> Cari Jurnal yang akan Dibatalkan
+            <Search className="h-5 w-5" /> Cari Jurnal
           </CardTitle>
         </CardHeader>
         <CardContent className="flex gap-4 items-end">
           <div className="flex-grow space-y-2">
-            <Label htmlFor="bukti">
-              Nomor Bukti Jurnal (Misal: JOUR/20251121/00002)
-            </Label>
+            <Label htmlFor="bukti">Nomor Bukti Jurnal</Label>
             <Input
               id="bukti"
-              placeholder="Masukkan Nomor Bukti"
+              placeholder="Contoh: JOUR/2025..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === "Enter") handleSearch();
-              }}
-              disabled={
-                isSearching || isReversing || isFetchingList || isFetchingById
-              }
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              disabled={isSearching || isFetchingById || isReversing}
             />
           </div>
           <Button
             onClick={handleSearch}
-            disabled={
-              isSearching || isReversing || isFetchingList || isFetchingById
-            }
-            className="h-10"
+            disabled={isSearching || isFetchingById || isReversing}
+            className="h-10 w-32"
           >
-            {isSearching || isFetchingList ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
+            {isSearching || isFetchingById ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <Search className="h-5 w-5" />
+              "Cari"
             )}
           </Button>
         </CardContent>
+
+        {/* PESAN ERROR / TIDAK DITEMUKAN */}
         {searchError && (
-          <p className="text-sm text-red-500 px-6 pb-4">{searchError}</p>
+          <div className="px-6 pb-6 pt-0 animate-in fade-in slide-in-from-top-2">
+             <div className="p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                {searchError}
+             </div>
+          </div>
         )}
       </Card>
 
-      {/* --- KARTU DETAIL JURNAL DITEMUKAN --- */}
-      {foundJournalView && (
-        <Card className="shadow-lg border-t-4 border-red-500">
+      {/* --- TAMPILAN DETAIL (Hanya Muncul Jika Data Ada & Tidak Error) --- */}
+      {foundJournalView && !searchError && (
+        <Card className="shadow-lg border-t-4 border-red-500 animate-in fade-in zoom-in-95 duration-300">
           <CardHeader>
             <CardTitle className="text-xl flex items-center gap-2 text-red-600">
-              <AlertTriangle className="h-5 w-5" /> Detail Jurnal Siap
-              Dibatalkan
+              <AlertTriangle className="h-5 w-5" /> Konfirmasi Pembatalan
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Ringkasan Jurnal */}
-            <div className="grid grid-cols-2 gap-4 mb-4 pb-4 border-b">
-              <div>
-                <p className="text-sm text-gray-500">No. Bukti / Tipe</p>
-                <p className="font-bold">
-                  {foundJournalView.no_bukti}{" "}
-                  <Badge variant="secondary">{foundJournalView.tipe}</Badge>
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Tanggal Posting</p>
-                <p className="font-bold flex items-center gap-1">
-                  <Calendar className="h-4 w-4" /> {foundJournalView.tanggal}
-                </p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-sm text-gray-500">Deskripsi Jurnal</p>
-                <p className="font-medium italic">
-                  {foundJournalView.deskripsi}
-                </p>
-              </div>
+            {/* Header Info */}
+            <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-lg border">
+                <div>
+                    <Label className="text-xs text-gray-500 font-semibold">NO. BUKTI</Label>
+                    <div className="font-mono text-lg font-bold text-gray-800">{foundJournalView.no_bukti}</div>
+                </div>
+                <div>
+                    <Label className="text-xs text-gray-500 font-semibold">TANGGAL</Label>
+                    <div className="flex items-center gap-2 font-medium">
+                        <Calendar className="h-4 w-4 text-gray-400"/>
+                        {foundJournalView.tanggal}
+                    </div>
+                </div>
+                <div className="col-span-2">
+                    <Label className="text-xs text-gray-500 font-semibold">DESKRIPSI</Label>
+                    <div className="italic text-gray-700">{foundJournalView.deskripsi}</div>
+                </div>
             </div>
 
-            {/* Tabel Detail Debet/Kredit */}
-            <h4 className="font-semibold text-lg mb-2">
-              Rincian Debet / Kredit:
-            </h4>
-            <div className="p-0 overflow-x-auto border rounded-lg">
-              <table className="min-w-full text-sm">
-                <thead className="bg-red-50 text-left">
+            {/* Tabel Detail */}
+            <div className="border rounded-md overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-100 text-gray-700 font-semibold">
                   <tr>
-                    <th className="px-4 py-2">COA</th>
-                    <th className="px-4 py-2">Nama Akun</th>
-                    <th className="px-4 py-2 text-right">Debet</th>
-                    <th className="px-4 py-2 text-right">Kredit</th>
+                    <th className="px-4 py-3 text-left">Akun (COA)</th>
+                    <th className="px-4 py-3 text-right">Debet</th>
+                    <th className="px-4 py-3 text-right">Kredit</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {foundJournalView.details.map((detail, index) => (
-                    <tr key={index} className="border-t">
-                      <td className="px-4 py-2 font-mono">{detail.coa}</td>
-                      <td className="px-4 py-2">{detail.coa_name}</td>
-                      <td className="px-4 py-2 text-right text-red-600">
-                        {formatRupiah(detail.debet)}
+                <tbody className="divide-y divide-gray-100">
+                  {foundJournalView.details.map((item, idx) => (
+                    <tr key={idx} className="bg-white hover:bg-gray-50">
+                      <td className="px-4 py-2">
+                        <div className="font-medium text-gray-900">{item.coa}</div>
+                        <div className="text-xs text-gray-500">{item.coa_name}</div>
                       </td>
-                      <td className="px-4 py-2 text-right text-green-600">
-                        {formatRupiah(detail.kredit)}
+                      <td className="px-4 py-2 text-right font-mono text-gray-700">
+                        {item.debet > 0 ? formatRupiah(item.debet) : "-"}
+                      </td>
+                      <td className="px-4 py-2 text-right font-mono text-gray-700">
+                        {item.kredit > 0 ? formatRupiah(item.kredit) : "-"}
                       </td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="bg-red-100 font-bold">
-                  <tr>
-                    <td colSpan={2} className="px-4 py-2 text-right">
-                      TOTAL
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      {formatRupiah(foundJournalView.total_nominal)}
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      {formatRupiah(foundJournalView.total_nominal)}
-                    </td>
-                  </tr>
+                <tfoot className="bg-gray-50 font-bold text-gray-800">
+                    <tr>
+                        <td className="px-4 py-3 text-right">TOTAL</td>
+                        <td className="px-4 py-3 text-right text-indigo-700">
+                            {formatRupiah(foundJournalView.total_nominal)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-indigo-700">
+                            {formatRupiah(foundJournalView.total_nominal)}
+                        </td>
+                    </tr>
                 </tfoot>
               </table>
             </div>
           </CardContent>
-          <CardFooter>
-            <Button
-              onClick={handleBatalJurnal}
-              disabled={isReversing || isUpdating}
-              className="w-full text-lg bg-red-600 hover:bg-red-700"
-            >
-              {isReversing || isUpdating ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Memproses Pembatalan...
-                </>
-              ) : (
-                <>
-                  <XCircle className="mr-2 h-5 w-5" />
-                  Batalkan Jurnal Ini
-                </>
-              )}
-            </Button>
+          <CardFooter className="bg-red-50 p-4 border-t flex justify-end">
+             <Button 
+                onClick={handleBatalJurnal}
+                disabled={isReversing || isUpdating}
+                className="bg-red-600 hover:bg-red-700 text-white shadow-md"
+             >
+                {isReversing || isUpdating ? (
+                    <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2"/> Memproses...
+                    </>
+                ) : (
+                    <>
+                        <XCircle className="h-4 w-4 mr-2"/> Batalkan Jurnal Ini
+                    </>
+                )}
+             </Button>
           </CardFooter>
         </Card>
-      )}
-
-      {/* --- INFO --- */}
-      {!foundJournalView && !searchError && !isSearching && (
-        <div className="mt-8 p-4 bg-yellow-50 border-l-4 border-yellow-500 text-yellow-700 rounded-lg">
-          <p className="font-semibold flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5" /> Perhatian: Mekanisme
-            Pembatalan
-          </p>
-          <p className="text-sm mt-1">
-            Pembatalan jurnal akan mengubah field <code>is_posted</code> menjadi
-            0 dan (opsional) sistem dapat mencatat jurnal balik di backend. Data
-            transaksi asli tidak dihapus.
-          </p>
-        </div>
       )}
     </div>
   );

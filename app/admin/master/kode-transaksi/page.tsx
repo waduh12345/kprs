@@ -14,6 +14,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { ProdukToolbar } from "@/components/ui/produk-toolbar";
 import ActionsGroup from "@/components/admin-components/actions-group";
+import { ChevronDown, ChevronUp, Loader2 } from "lucide-react"; // Import Icons
 
 import {
   useGetKodeTransaksiListQuery,
@@ -29,9 +30,81 @@ import FormKodeTransaksi, {
 } from "@/components/form-modal/kode-transaksi-form";
 import { displayDate } from "@/lib/format-utils";
 
+// --- SUB-COMPONENT: DETAIL ROW (Lazy Load) ---
+const DetailRow = ({ id, colSpan }: { id: number; colSpan: number }) => {
+  const { data: response, isLoading } = useGetKodeTransaksiByIdQuery(id);
+  const detail = response;
+
+  if (isLoading) {
+    return (
+      <tr className="bg-gray-50/50">
+        <td colSpan={colSpan} className="p-4 text-center">
+          <div className="flex items-center justify-center gap-2 text-gray-500">
+            <Loader2 className="h-4 w-4 animate-spin" /> Memuat rincian...
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  if (!detail) return null;
+
+  return (
+    <tr className="bg-gray-50 border-b shadow-inner">
+      <td colSpan={colSpan} className="p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pl-10 pr-4">
+          {/* Kolom Debet */}
+          <div className="border rounded-md bg-white p-3">
+            <h4 className="font-semibold text-sm mb-2 text-gray-700 border-b pb-1">
+              Posisi Debet
+            </h4>
+            {detail.debits && detail.debits.length > 0 ? (
+              <ul className="space-y-2">
+                {detail.debits.map((item) => (
+                  <li key={item.id} className="text-sm flex flex-col">
+                    <span className="font-mono font-medium text-blue-600">
+                      {item.coa?.code}
+                    </span>
+                    <span className="text-gray-600">{item.coa?.name}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-gray-400 italic">Tidak ada data</p>
+            )}
+          </div>
+
+          {/* Kolom Kredit */}
+          <div className="border rounded-md bg-white p-3">
+            <h4 className="font-semibold text-sm mb-2 text-gray-700 border-b pb-1">
+              Posisi Kredit
+            </h4>
+            {detail.credits && detail.credits.length > 0 ? (
+              <ul className="space-y-2">
+                {detail.credits.map((item) => (
+                  <li key={item.id} className="text-sm flex flex-col">
+                    <span className="font-mono font-medium text-green-600">
+                      {item.coa?.code}
+                    </span>
+                    <span className="text-gray-600">{item.coa?.name}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-gray-400 italic">Tidak ada data</p>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+};
+
+// --- MAIN COMPONENT ---
 export default function KodeTransaksiPage() {
   const [filters, setFilters] = useState({ search: "", status: "all" });
   const [currentPage] = useState(1);
+  const [expandedId, setExpandedId] = useState<number | null>(null); // State expand
 
   const { data, isLoading, refetch } = useGetKodeTransaksiListQuery({
     page: currentPage,
@@ -46,15 +119,15 @@ export default function KodeTransaksiPage() {
 
   // modal state
   const [openForm, setOpenForm] = useState(false);
-  const [openDetail, setOpenDetail] = useState(false);
   const [selected, setSelected] = useState<KodeTransaksi | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  // fetch detail hanya ketika edit agar dapat lines debits/credits terbaru
-  const { data: selectedData, isLoading: isLoadingSelected } =
-    useGetKodeTransaksiByIdQuery(selectedId!, { skip: !selectedId });
+  // fetch detail hanya ketika edit form dibuka
+  const { data: selectedData } = useGetKodeTransaksiByIdQuery(selectedId!, {
+    skip: !selectedId || !openForm, // Skip jika form tidak terbuka atau ID null
+  });
 
-  // state form yang dikirim ke FormKodeTransaksi
+  // sinkronkan form saat data detail loaded (mode edit)
   const [form, setForm] = useState<FormKodeTransaksiState>({
     code: "",
     module: "",
@@ -64,19 +137,19 @@ export default function KodeTransaksiPage() {
     credits: [{ coa_id: 0, order: 1 }],
   });
 
-  // sinkronkan form saat data detail loaded (mode edit)
   useEffect(() => {
     if (selectedData && openForm && selected) {
+      const detail = selectedData;
       setForm({
-        code: selectedData.code,
-        module: selectedData.module,
-        description: selectedData.description,
-        status: selectedData.status,
-        debits: selectedData.debits?.map((d, i) => ({
+        code: detail.code,
+        module: detail.module,
+        description: detail.description,
+        status: detail.status,
+        debits: detail.debits?.map((d, i) => ({
           coa_id: d.coa_id,
           order: d.order ?? i + 1,
         })) ?? [{ coa_id: 0, order: 1 }],
-        credits: selectedData.credits?.map((c, i) => ({
+        credits: detail.credits?.map((c, i) => ({
           coa_id: c.coa_id,
           order: c.order ?? i + 1,
         })) ?? [{ coa_id: 0, order: 1 }],
@@ -110,6 +183,10 @@ export default function KodeTransaksiPage() {
     }
   };
 
+  const toggleExpand = (id: number) => {
+    setExpandedId((prev) => (prev === id ? null : id));
+  };
+
   const handleCreate = () => {
     setSelected(null);
     setSelectedId(null);
@@ -128,11 +205,6 @@ export default function KodeTransaksiPage() {
     setSelected(item);
     setSelectedId(item.id);
     setOpenForm(true);
-  };
-
-  const handleDetail = (item: KodeTransaksi) => {
-    setSelected(item);
-    setOpenDetail(true);
   };
 
   const handleDelete = async (id: number) => {
@@ -197,40 +269,44 @@ export default function KodeTransaksiPage() {
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 w-[50px]"></th> {/* Kolom Panah */}
+                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
                     Aksi
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
                     Kode
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
                     Module
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
                     Deskripsi
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Tanggal Dibuat
+                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                    Dibuat
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-4 text-center">
-                      <div className="animate-pulse">Loading...</div>
+                    <td colSpan={7} className="px-6 py-4 text-center">
+                      <div className="animate-pulse flex justify-center gap-2">
+                        <Loader2 className="animate-spin h-5 w-5 text-gray-400" />
+                        Loading...
+                      </div>
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-6 py-4 text-center text-gray-500"
                     >
                       Tidak ada data
@@ -238,30 +314,57 @@ export default function KodeTransaksiPage() {
                   </tr>
                 ) : (
                   filtered.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <ActionsGroup
-                          handleDetail={() => handleDetail(item)}
-                          handleEdit={() => handleEdit(item)}
-                          handleDelete={() => handleDelete(item.id)}
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {item.code}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {item.module}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {item.description}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(item.status)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(item.created_at).toLocaleDateString("id-ID")}
-                      </td>
-                    </tr>
+                    // Fragment digunakan karena kita me-render dua <tr> per item
+                    <tbody
+                      key={item.id}
+                      className="border-b last:border-0 hover:bg-gray-50 transition-colors"
+                    >
+                      <tr>
+                        <td className="px-4 py-4 text-center">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-gray-500"
+                            onClick={() => toggleExpand(item.id)}
+                          >
+                            {expandedId === item.id ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <ActionsGroup
+                            handleEdit={() => handleEdit(item)}
+                            handleDelete={() => handleDelete(item.id)}
+                            // handleDetail tidak diperlukan lagi di tombol karena sudah ada expand row
+                          />
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                          {item.code}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-900">
+                          {item.module}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                          {item.description}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {getStatusBadge(item.status)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                          {new Date(item.created_at).toLocaleDateString(
+                            "id-ID"
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Expanded Row */}
+                      {expandedId === item.id && (
+                        <DetailRow id={item.id} colSpan={7} />
+                      )}
+                    </tbody>
                   ))
                 )}
               </tbody>
@@ -270,22 +373,22 @@ export default function KodeTransaksiPage() {
         </CardContent>
       </Card>
 
-      {/* Pagination simple (opsional; currentPage masih fixed 1) */}
+      {/* Pagination */}
       <div className="flex items-center justify-between">
-        <div className="text-sm">
+        <div className="text-sm text-gray-600">
           Halaman <b>{currentPage}</b> dari <b>{lastPage}</b>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" disabled>
+          <Button variant="outline" size="sm" disabled>
             Sebelumnya
           </Button>
-          <Button variant="outline" disabled>
+          <Button variant="outline" size="sm" disabled>
             Berikutnya
           </Button>
         </div>
       </div>
 
-      {/* Create/Edit Modal -> pakai Form terpisah */}
+      {/* Create/Edit Modal */}
       <Dialog
         open={openForm}
         onOpenChange={(o) => {
@@ -296,67 +399,24 @@ export default function KodeTransaksiPage() {
           }
         }}
       >
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="sm:max-w-[1200px] w-full max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {selected ? "Edit Kode Transaksi" : "Tambah Kode Transaksi"}
             </DialogTitle>
           </DialogHeader>
 
-          {selected && isLoadingSelected ? (
-            <div className="py-10 text-center">Loading…</div>
-          ) : (
-            <FormKodeTransaksi
-              form={form}
-              setForm={setForm}
-              onCancel={() => {
-                setOpenForm(false);
-                setSelected(null);
-                setSelectedId(null);
-              }}
-              onSubmit={submit}
-              isLoading={isCreating || isUpdating}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Detail Modal */}
-      <Dialog open={openDetail} onOpenChange={setOpenDetail}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Detail Kode Transaksi</DialogTitle>
-          </DialogHeader>
-          {selected && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="font-medium">Kode</Label>
-                  <p className="text-sm text-gray-600">{selected.code}</p>
-                </div>
-                <div>
-                  <Label className="font-medium">Module</Label>
-                  <p className="text-sm text-gray-600">{selected.module}</p>
-                </div>
-                <div className="col-span-2">
-                  <Label className="font-medium">Deskripsi</Label>
-                  <p className="text-sm text-gray-600">
-                    {selected.description}
-                  </p>
-                </div>
-                <div>
-                  <Label className="font-medium">Status</Label>
-                  <div className="mt-1">{getStatusBadge(selected.status)}</div>
-                </div>
-                <div>
-                  <Label className="font-medium">Tanggal Dibuat</Label>
-                  <p className="text-sm text-gray-600">
-                    {displayDate(selected.created_at)}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          <FormKodeTransaksi
+            form={form}
+            setForm={setForm}
+            onCancel={() => {
+              setOpenForm(false);
+              setSelected(null);
+              setSelectedId(null);
+            }}
+            onSubmit={submit}
+            isLoading={isCreating || isUpdating}
+          />
         </DialogContent>
       </Dialog>
     </div>

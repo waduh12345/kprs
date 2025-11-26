@@ -193,6 +193,7 @@ export const journalEliminasiService = apiSlice.injectEndpoints({
 
 export const {
   useGetJournalEliminasiListQuery,
+  useLazyGetJournalEliminasiListQuery, // <--- INI YANG DITAMBAHKAN
   useGetJournalEliminasiByIdQuery,
   useCreateJournalEliminasiMutation,
   useUpdateJournalEliminasiMutation,

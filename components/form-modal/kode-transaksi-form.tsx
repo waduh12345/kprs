@@ -16,9 +16,16 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from "@/components/ui/command";
-import { ChevronDown, Loader2, Layers } from "lucide-react";
+import {
+  ChevronDown,
+  Loader2,
+  Layers,
+  Plus,
+  Trash2,
+  ArrowDownLeft,
+  ArrowUpRight,
+} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -31,8 +38,9 @@ import {
   CreateKodeTransaksiRequest,
   useGetCOAListQuery,
 } from "@/services/admin/kode-transaksi.service";
+import { cn } from "@/lib/utils";
 
-/** ===== COA Picker ala AnggotaPicker: fetch+show setelah 3 huruf, debounce ===== */
+/** ===== COA Picker ===== */
 type CoaLite = Pick<COA, "id" | "code" | "name" | "level" | "type">;
 
 const MIN_CHARS = 3;
@@ -42,12 +50,12 @@ function COAPicker({
   selectedId,
   onChange,
   disabled,
-  label = "COA",
+  placeholderText = "Pilih Akun COA",
 }: {
   selectedId: number | null;
   onChange: (coa: CoaLite | null) => void;
   disabled?: boolean;
-  label?: string;
+  placeholderText?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -58,7 +66,6 @@ function COAPicker({
     return () => clearTimeout(t);
   }, [query]);
 
-  /** ⬇️ Perbaikan utama: saat EDIT (ada selectedId), tetap fetch supaya label tampil */
   const shouldFetch = debounced.length >= MIN_CHARS || selectedId !== null;
 
   const { data, isLoading, isError, refetch } = useGetCOAListQuery(
@@ -101,128 +108,116 @@ function COAPicker({
     }
   }, [open]);
 
-  const placeholder = !shouldFetch
-    ? `Ketik minimal ${MIN_CHARS} karakter…`
+  const statusText = !shouldFetch
+    ? `Ketik min ${MIN_CHARS} huruf...`
     : isLoading
-    ? "Memuat…"
-    : `${filtered.length} hasil`;
+    ? "Memuat..."
+    : `${filtered.length} ditemukan`;
 
   const pick = (c: CoaLite | null) => {
     onChange(c);
     setOpen(false);
-    setQuery(c ? `${c.code} — ${c.name}` : "");
+    if (c) setQuery(`${c.code} ${c.name}`);
   };
 
   return (
-    <div className="w-full">
-      <Label className="mb-1 block">{label}</Label>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={disabled}
-            className="w-full h-10 justify-between rounded-xl border-neutral-200 bg-white px-3 shadow-sm hover:bg-neutral-50"
-            onClick={() => setOpen((o) => !o)}
-          >
-            <span className="flex items-center gap-2 truncate text-left">
-              {isLoading && shouldFetch ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin text-neutral-400" />
-                  <span className="text-neutral-500">Memuat COA…</span>
-                </>
-              ) : selected ? (
-                <span className="truncate">
-                  {selected.code} — {selected.name}
-                </span>
-              ) : selectedId !== null && !isLoading ? (
-                // fallback ringan saat item belum ketemu di list (mis. masih loading pertama kali)
-                <span className="text-neutral-500">ID: {selectedId}</span>
-              ) : (
-                <>
-                  <Layers className="h-4 w-4 text-neutral-400" />
-                  <span className="text-neutral-500">{placeholder}</span>
-                </>
-              )}
-            </span>
-            <ChevronDown className="h-4 w-4 text-neutral-400" />
-          </Button>
-        </PopoverTrigger>
-
-        <PopoverContent
-          className="w-[var(--radix-popover-trigger-width)] p-0 rounded-xl shadow-xl"
-          align="start"
-          side="bottom"
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={disabled}
+          className={cn(
+            "w-full justify-between px-3 text-left font-normal bg-white h-10",
+            !selected && "text-muted-foreground"
+          )}
         >
-          {isError ? (
-            <div className="p-3 text-sm">
-              <div className="mb-2 text-red-600">Gagal memuat COA.</div>
-              <Button size="sm" variant="outline" onClick={() => refetch()}>
-                Coba lagi
-              </Button>
-            </div>
-          ) : (
-            <Command shouldFilter={false}>
-              <div className="p-2">
-                <CommandInput
-                  ref={inputRef}
-                  value={query}
-                  onValueChange={setQuery}
-                  placeholder={`Cari kode/nama COA (min ${MIN_CHARS} karakter)…`}
-                />
+          <span className="flex items-center gap-2 truncate">
+            {isLoading && shouldFetch && !selected ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : selected ? (
+              <span className="truncate font-medium flex items-center">
+                <span className="font-mono text-xs mr-2 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded text-slate-700">
+                  {selected.code}
+                </span>
+                {selected.name}
+              </span>
+            ) : (
+              <>
+                <Layers className="h-4 w-4 text-muted-foreground/70" />
+                <span>{placeholderText}</span>
+              </>
+            )}
+          </span>
+          <ChevronDown className="h-4 w-4 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+
+      <PopoverContent
+        className="w-[350px] p-0 shadow-xl rounded-lg"
+        align="start"
+      >
+        {isError ? (
+          <div className="p-4 text-center text-sm space-y-2">
+            <p className="text-red-600">Gagal memuat data.</p>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>
+              Coba lagi
+            </Button>
+          </div>
+        ) : (
+          <Command shouldFilter={false} className="max-h-[300px]">
+            <CommandInput
+              ref={inputRef}
+              value={query}
+              onValueChange={setQuery}
+              placeholder="Cari kode atau nama akun..."
+              className="border-none focus:ring-0"
+            />
+            <CommandList>
+              <div className="px-3 py-2 text-xs text-muted-foreground border-b bg-slate-50">
+                {statusText}
               </div>
 
-              <CommandList className="max-h-72">
-                <div className="px-3 py-2 text-xs text-neutral-500">
-                  {placeholder}
+              {!shouldFetch ? (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  Mulai ketik untuk mencari...
                 </div>
-
-                {!shouldFetch ? (
-                  <div className="px-3 pb-3 text-sm text-neutral-600">
-                    Ketik minimal <b>{MIN_CHARS}</b> huruf untuk mulai mencari.
-                  </div>
-                ) : (
-                  <>
-                    <CommandEmpty>Tidak ada hasil.</CommandEmpty>
-
-                    {!isLoading && (
-                      <>
-                        <CommandGroup heading="Daftar COA">
-                          {filtered.map((c) => (
-                            <CommandItem
-                              key={c.id}
-                              value={c.code}
-                              onSelect={() => pick(c)}
-                              className="cursor-pointer"
-                            >
-                              <div className="flex flex-col">
-                                <span className="text-sm font-medium">
-                                  {c.code} — {c.name}
-                                </span>
-                                <span className="text-xs text-neutral-500">
-                                  ID: {c.id} • Level: {c.level} • {c.type}
-                                </span>
-                              </div>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-
-                        <CommandSeparator />
-                        <CommandGroup>
-                          <CommandItem value="none" onSelect={() => pick(null)}>
-                            Kosongkan pilihan
-                          </CommandItem>
-                        </CommandGroup>
-                      </>
-                    )}
-                  </>
-                )}
-              </CommandList>
-            </Command>
-          )}
-        </PopoverContent>
-      </Popover>
-    </div>
+              ) : (
+                <>
+                  <CommandEmpty>Tidak ada hasil ditemukan.</CommandEmpty>
+                  {!isLoading && (
+                    <CommandGroup>
+                      {filtered.map((c) => (
+                        <CommandItem
+                          key={c.id}
+                          value={c.code}
+                          onSelect={() => pick(c)}
+                          className="cursor-pointer py-2"
+                        >
+                          <div className="flex flex-col w-full">
+                            <div className="flex justify-between items-center mb-0.5">
+                              <span className="font-semibold text-sm font-mono text-slate-800">
+                                {c.code}
+                              </span>
+                              <span className="text-[10px] uppercase text-muted-foreground border px-1 rounded bg-slate-50">
+                                {c.type}
+                              </span>
+                            </div>
+                            <span className="text-sm text-slate-600 truncate">
+                              {c.name}
+                            </span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+                </>
+              )}
+            </CommandList>
+          </Command>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -251,9 +246,10 @@ export default function FormKodeTransaksi({
     (val: FormKodeTransaksiState[K]) =>
       setForm({ ...form, [key]: val });
 
+  // --- Logic Debit ---
   const updateDebit = (
     idx: number,
-    patch: Partial<FormKodeTransaksiState["debits"][number]>
+    patch: Partial<typeof form.debits[number]>
   ) => {
     const next = [...form.debits];
     next[idx] = { ...next[idx], ...patch };
@@ -269,9 +265,10 @@ export default function FormKodeTransaksi({
     setForm({ ...form, debits: form.debits.filter((_, i) => i !== idx) });
   };
 
+  // --- Logic Credit ---
   const updateCredit = (
     idx: number,
-    patch: Partial<FormKodeTransaksiState["credits"][number]>
+    patch: Partial<typeof form.credits[number]>
   ) => {
     const next = [...form.credits];
     next[idx] = { ...next[idx], ...patch };
@@ -288,152 +285,246 @@ export default function FormKodeTransaksi({
   };
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-4xl space-y-6 max-h-[80vh] overflow-y-auto">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label>Kode</Label>
-          <Input
-            value={form.code}
-            onChange={(e) => onChangeField("code")(e.target.value)}
-            readOnly={readonly}
-            required
-          />
-        </div>
-        <div>
-          <Label>Module</Label>
-          <Input
-            value={form.module}
-            onChange={(e) => onChangeField("module")(e.target.value)}
-            readOnly={readonly}
-            required
-          />
-        </div>
-
-        <div className="md:col-span-2">
-          <Label>Deskripsi</Label>
-          <Input
-            value={form.description}
-            onChange={(e) => onChangeField("description")(e.target.value)}
-            readOnly={readonly}
-            required
-          />
-        </div>
-
-        <div className="col-span-2">
-          <Label>Status</Label>
-          <Select
-            value={String(form.status)}
-            onValueChange={(v) => onChangeField("status")(Number(v))}
-            disabled={readonly}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Pilih status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1">Active</SelectItem>
-              <SelectItem value="0">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* ===== Debits ===== */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold">Debits</h3>
-          {!readonly && (
-            <Button type="button" size="sm" onClick={addDebit}>
-              Tambah Debit
-            </Button>
-          )}
-        </div>
-        {form.debits.map((d, i) => (
-          <div
-            key={i}
-            className="grid grid-cols-1 md:grid-cols-[1fr,120px,auto] items-end gap-3 border rounded-xl p-3"
-          >
-            <COAPicker
-              selectedId={d.coa_id ? Number(d.coa_id) : null}
-              onChange={(c) => updateDebit(i, { coa_id: c?.id ?? 0 })}
-              disabled={readonly}
-              label="COA (Debit)"
-            />
-            <div>
-              <Label>Order</Label>
+    <div className="flex flex-col h-full bg-slate-50/50">
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        
+        {/* --- SECTION 1: HEADER INFO --- */}
+        <div className="bg-white p-6 rounded-xl border shadow-sm space-y-6">
+          <div className="flex items-center gap-2 pb-2 border-b">
+            <Layers className="h-5 w-5 text-slate-500" />
+            <h3 className="text-base font-semibold text-slate-800">
+              Informasi Umum
+            </h3>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            <div className="md:col-span-3">
+              <Label className="mb-2 block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Kode Transaksi
+              </Label>
               <Input
-                type="number"
-                value={d.order}
-                onChange={(e) =>
-                  updateDebit(i, { order: Number(e.target.value) })
-                }
+                value={form.code}
+                onChange={(e) => onChangeField("code")(e.target.value)}
                 readOnly={readonly}
+                placeholder="Contoh: SP_POKOK_IN"
+                className="font-mono text-sm uppercase bg-slate-50 border-slate-200 focus:bg-white transition-colors"
               />
             </div>
-            {!readonly && form.debits.length > 1 && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => removeDebit(i)}
-              >
-                Hapus
-              </Button>
-            )}
-          </div>
-        ))}
-      </div>
 
-      {/* ===== Credits ===== */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold">Credits</h3>
-          {!readonly && (
-            <Button type="button" size="sm" onClick={addCredit}>
-              Tambah Credit
-            </Button>
-          )}
-        </div>
-        {form.credits.map((c, i) => (
-          <div
-            key={i}
-            className="grid grid-cols-1 md:grid-cols-[1fr,120px,auto] items-end gap-3 border rounded-xl p-3"
-          >
-            <COAPicker
-              selectedId={c.coa_id ? Number(c.coa_id) : null}
-              onChange={(sel) => updateCredit(i, { coa_id: sel?.id ?? 0 })}
-              disabled={readonly}
-              label="COA (Credit)"
-            />
-            <div>
-              <Label>Order</Label>
+            <div className="md:col-span-3">
+              <Label className="mb-2 block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Module
+              </Label>
               <Input
-                type="number"
-                value={c.order}
-                onChange={(e) =>
-                  updateCredit(i, { order: Number(e.target.value) })
-                }
+                value={form.module}
+                onChange={(e) => onChangeField("module")(e.target.value)}
                 readOnly={readonly}
+                placeholder="Contoh: Simpanan"
+                className="bg-slate-50 border-slate-200 focus:bg-white transition-colors"
               />
             </div>
-            {!readonly && form.credits.length > 1 && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => removeCredit(i)}
+
+             <div className="md:col-span-2">
+              <Label className="mb-2 block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Status
+              </Label>
+              <Select
+                value={String(form.status)}
+                onValueChange={(v) => onChangeField("status")(Number(v))}
+                disabled={readonly}
               >
-                Hapus
-              </Button>
-            )}
+                <SelectTrigger className="w-full bg-slate-50 border-slate-200 focus:bg-white transition-colors">
+                  <SelectValue placeholder="Pilih status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Active</SelectItem>
+                  <SelectItem value="0">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="md:col-span-4">
+              <Label className="mb-2 block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Deskripsi
+              </Label>
+              <Input
+                value={form.description}
+                onChange={(e) => onChangeField("description")(e.target.value)}
+                readOnly={readonly}
+                placeholder="Deskripsi transaksi..."
+                className="bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+              />
+            </div>
           </div>
-        ))}
+        </div>
+
+        {/* --- SECTION 2: JURNAL CONFIG (SPLIT VIEW) --- */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          {/* LEFT: DEBITS */}
+          <div className="flex flex-col space-y-4">
+            <div className="flex items-center justify-between bg-blue-50/80 p-3 rounded-lg border border-blue-100 shadow-sm">
+              <div className="flex items-center gap-2 text-blue-700 font-bold text-sm">
+                 <div className="bg-white p-1.5 rounded-md shadow-sm border border-blue-100">
+                    <ArrowDownLeft className="h-4 w-4 text-blue-600" />
+                 </div>
+                 <span>POSISI DEBET</span>
+              </div>
+              {!readonly && (
+                <Button 
+                  type="button" 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={addDebit}
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-100 h-8 text-xs font-medium"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Tambah Akun
+                </Button>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              {form.debits.map((d, i) => (
+                <div
+                  key={i}
+                  className="group relative bg-white p-4 rounded-xl border border-slate-200 shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
+                >
+                  <div className="grid grid-cols-[1fr,80px] gap-4 items-start">
+                    <div>
+                      <Label className="text-[10px] uppercase text-slate-400 font-bold mb-1.5 block">
+                        Akun COA
+                      </Label>
+                      <COAPicker
+                        selectedId={d.coa_id ? Number(d.coa_id) : null}
+                        onChange={(c) => updateDebit(i, { coa_id: c?.id ?? 0 })}
+                        disabled={readonly}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase text-slate-400 font-bold mb-1.5 block">
+                        Urutan
+                      </Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={d.order}
+                        onChange={(e) =>
+                          updateDebit(i, { order: Number(e.target.value) })
+                        }
+                        readOnly={readonly}
+                        className="text-center font-mono"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Delete Button (Absolute for neatness) */}
+                  {!readonly && form.debits.length > 1 && (
+                    <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity scale-90 group-hover:scale-100 duration-200">
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            className="h-7 w-7 rounded-full shadow-md border-2 border-white"
+                            onClick={() => removeDebit(i)}
+                        >
+                            <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* RIGHT: CREDITS */}
+          <div className="flex flex-col space-y-4">
+            <div className="flex items-center justify-between bg-green-50/80 p-3 rounded-lg border border-green-100 shadow-sm">
+              <div className="flex items-center gap-2 text-green-700 font-bold text-sm">
+                 <div className="bg-white p-1.5 rounded-md shadow-sm border border-green-100">
+                    <ArrowUpRight className="h-4 w-4 text-green-600" />
+                 </div>
+                 <span>POSISI KREDIT</span>
+              </div>
+              {!readonly && (
+                <Button 
+                  type="button" 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={addCredit}
+                  className="text-green-600 hover:text-green-700 hover:bg-green-100 h-8 text-xs font-medium"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Tambah Akun
+                </Button>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              {form.credits.map((c, i) => (
+                <div
+                  key={i}
+                  className="group relative bg-white p-4 rounded-xl border border-slate-200 shadow-sm transition-all hover:border-green-300 hover:shadow-md"
+                >
+                  <div className="grid grid-cols-[1fr,80px] gap-4 items-start">
+                    <div>
+                      <Label className="text-[10px] uppercase text-slate-400 font-bold mb-1.5 block">
+                        Akun COA
+                      </Label>
+                      <COAPicker
+                        selectedId={c.coa_id ? Number(c.coa_id) : null}
+                        onChange={(sel) => updateCredit(i, { coa_id: sel?.id ?? 0 })}
+                        disabled={readonly}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] uppercase text-slate-400 font-bold mb-1.5 block">
+                        Urutan
+                      </Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={c.order}
+                        onChange={(e) =>
+                          updateCredit(i, { order: Number(e.target.value) })
+                        }
+                        readOnly={readonly}
+                        className="text-center font-mono"
+                      />
+                    </div>
+                  </div>
+
+                   {/* Delete Button */}
+                   {!readonly && form.credits.length > 1 && (
+                    <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity scale-90 group-hover:scale-100 duration-200">
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            className="h-7 w-7 rounded-full shadow-md border-2 border-white"
+                            onClick={() => removeCredit(i)}
+                        >
+                            <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          
+        </div>
+
       </div>
 
+      {/* --- FOOTER ACTION --- */}
       {!readonly && (
-        <div className="pt-2 flex justify-end gap-2">
-          <Button variant="outline" onClick={onCancel}>
+        <div className="p-5 border-t bg-white flex justify-end gap-3">
+          <Button variant="outline" onClick={onCancel} className="w-24 border-slate-300">
             Batal
           </Button>
-          <Button onClick={onSubmit} disabled={isLoading}>
-            {isLoading ? "Menyimpan..." : "Simpan"}
+          <Button onClick={onSubmit} disabled={isLoading} className="w-36 bg-indigo-600 hover:bg-indigo-700">
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Simpan Data
           </Button>
         </div>
       )}

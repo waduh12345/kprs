@@ -62,11 +62,6 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           href: "/admin/anggota",
         },
         {
-          id: "anggota-history",
-          label: "History Anggota",
-          href: "/admin/anggota/history",
-        },
-        {
           id: "anggota-laporan",
           label: "Laporan Data Anggota",
           href: "/admin/anggota/laporan",

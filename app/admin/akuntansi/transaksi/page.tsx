@@ -98,7 +98,7 @@ export default function TransaksiAkuntansiPage() {
     data: coaListResponse,
     isLoading: isLoadingCoa,
     isFetching: isFetchingCoa,
-  } = useGetCOAListQuery({ page: 1, paginate: 100 });
+  } = useGetCOAListQuery({ page: 1, paginate: 300, orderBy: "coas.code", order: "asc" });
 
   // flat COA array
   const coas: COAFromApi[] = coaListResponse?.data ?? [];

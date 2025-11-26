@@ -70,7 +70,7 @@ function COAPicker({
   // fetch kalau sudah 3 huruf ATAU sedang edit (ada selectedId)
   const shouldFetch = debounced.length >= MIN_CHARS || selectedId !== null;
   const { data, isLoading, isError, refetch } = useGetCOAListQuery(
-    { page: 1, paginate: 500 },
+    { page: 1, paginate: 500, orderBy: "coas.code", order: "asc" },
     { skip: !shouldFetch, refetchOnMountOrArgChange: true }
   );
 

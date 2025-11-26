@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -12,277 +12,247 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Search,
-  FileText,
-  Zap,
   Loader2,
-  ListChecks,
   AlertTriangle,
   Save,
   Edit,
   Calendar,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { cn } from "@/lib/utils"; // Pastikan path utils cn benar
 
-// --- DUMMY DATA & TYPES ---
+// Import Service
+import {
+  useLazyGetJournalListQuery,
+  useGetJournalByIdQuery,
+  useUpdateJournalMutation,
+  useGetCOAListQuery,
+  JournalDetailForm,
+  UpdateJournalRequest,
+} from "@/services/admin/journal.service";
 
-interface JurnalDetail {
-  coa: string;
-  coa_name: string;
-  debet: number;
-  kredit: number;
-  keterangan_baris: string; // Tambahkan keterangan per baris
-}
+// --- HELPERS FORMATTING ---
 
-interface JurnalPosted {
-  no_bukti: string;
-  tanggal: string;
-  deskripsi: string;
-  total_nominal: number;
-  tipe: "Otomatis" | "Manual";
-  status: "Posted" | "Revisi";
-  details: JurnalDetail[];
-}
-
-interface COA {
-  id: string;
-  name: string;
-}
-
-const dummyCOAs: COA[] = [
-  { id: "111001", name: "Kas di Tangan" },
-  { id: "112001", name: "Bank Operasional" },
-  { id: "121001", name: "Piutang Anggota" },
-  { id: "410001", name: "Pendapatan Jasa" },
-  { id: "510001", name: "Beban Gaji" },
-];
-
-const initialDummyJurnalList: JurnalPosted[] = [
-  {
-    no_bukti: "JRN-1001",
-    tanggal: "2025-11-15",
-    deskripsi: "Pencatatan beban gaji bulan November",
-    total_nominal: 50000000,
-    tipe: "Otomatis",
-    status: "Posted",
-    details: [
-      {
-        coa: "510001",
-        coa_name: "Beban Gaji",
-        debet: 50000000,
-        kredit: 0,
-        keterangan_baris: "Beban gaji bruto",
-      },
-      {
-        coa: "211001",
-        coa_name: "Utang Gaji",
-        debet: 0,
-        kredit: 50000000,
-        keterangan_baris: "Kredit ke utang gaji",
-      },
-    ],
-  },
-  {
-    no_bukti: "JRN-1002",
-    tanggal: "2025-11-16",
-    deskripsi: "Koreksi kas kecil",
-    total_nominal: 150000,
-    tipe: "Manual",
-    status: "Posted",
-    details: [
-      {
-        coa: "111001",
-        coa_name: "Kas di Tangan",
-        debet: 150000,
-        kredit: 0,
-        keterangan_baris: "Pengisian kas",
-      },
-      {
-        coa: "610001",
-        coa_name: "Beban Administrasi",
-        debet: 0,
-        kredit: 150000,
-        keterangan_baris: "Pengeluaran",
-      },
-    ],
-  },
-];
-
-// --- HELPER FUNCTIONS ---
-
-const formatRupiah = (number: number) => {
-  if (isNaN(number) || number === null || number === undefined) return "Rp 0";
+// 1. Format ke Tampilan (String "Rp 10.000")
+const formatRupiah = (number: number | string) => {
+  if (!number) return "";
+  const num = typeof number === "string" ? parseInt(number) : number;
+  if (isNaN(num)) return "";
+  
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
-  }).format(number);
+    maximumFractionDigits: 0,
+  }).format(num); // Output: "Rp 10.000"
 };
 
-// --- KOMPONEN UTAMA ---
+// 2. Parse dari Tampilan ke Angka (Number 10000)
+const parseNominal = (value: string): number => {
+  // Hapus semua karakter kecuali angka
+  const cleanValue = value.replace(/[^0-9]/g, "");
+  return cleanValue ? parseInt(cleanValue) : 0;
+};
+
+// --- TYPES LOCAL STATE ---
+interface EditableJournalDetail {
+  id?: number;
+  coa_id: number;
+  type: "debit" | "credit";
+  debit: number;
+  credit: number;
+  memo: string;
+}
+
+interface EditableJournalState {
+  description: string;
+  details: EditableJournalDetail[];
+}
 
 export default function RevisiJurnalPage() {
+  // --- STATE ---
   const [searchQuery, setSearchQuery] = useState("");
-  // State untuk menyimpan data asli yang ditemukan (Read-only)
-  const [jurnalOriginal, setJurnalOriginal] = useState<JurnalPosted | null>(
-    null
-  );
-  // State untuk menyimpan data yang sedang direvisi (Dapat diubah)
-  const [jurnalRevisi, setJurnalRevisi] = useState<JurnalPosted | null>(null);
-
-  const [isSearching, setIsSearching] = useState(false);
-  const [isRevising, setIsRevising] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [formState, setFormState] = useState<EditableJournalState | null>(null);
+  const [isRevising, setIsRevising] = useState(false);
+
+  // --- API HOOKS ---
+  const [triggerSearch, { isFetching: isSearching }] = useLazyGetJournalListQuery();
+
+  const { data: journalOriginal, isFetching: isFetchingDetail } = useGetJournalByIdQuery(
+    selectedId ?? 0, 
+    { skip: selectedId === null, refetchOnMountOrArgChange: true }
+  );
+
+  // Ambil Data COA untuk Combobox
+  const { data: coaListResp, isLoading: isLoadingCoa } = useGetCOAListQuery({ page: 1, paginate: 2000, orderBy: "coas.code", order: "asc" });
+  const coas = useMemo(() => coaListResp?.data || [], [coaListResp]);
+
+  const [updateJournal, { isLoading: isUpdating }] = useUpdateJournalMutation();
 
   // --- HANDLER PENCARIAN ---
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!searchQuery.trim()) {
-      setSearchError("Masukkan Nomor Bukti Jurnal.");
-      setJurnalOriginal(null);
-      setJurnalRevisi(null);
+      Swal.fire({ icon: "warning", title: "Input Kosong", text: "Masukkan Nomor Bukti Jurnal." });
       return;
     }
-
-    setIsSearching(true);
     setSearchError(null);
-    setJurnalOriginal(null);
-    setJurnalRevisi(null);
+    setSelectedId(null);
+    setFormState(null);
 
-    // Simulasi pencarian
-    setTimeout(() => {
-      const found = initialDummyJurnalList.find(
-        (d) => d.no_bukti === searchQuery.trim().toUpperCase()
-      );
+    try {
+      const result = await triggerSearch({
+        page: 1,
+        paginate: 10,
+        searchBySpecific: "reference",
+        search: searchQuery.trim(),
+      }).unwrap();
 
-      if (found) {
-        if (found.status === "Revisi") {
-          setSearchError(
-            `Jurnal ${found.no_bukti} sudah direvisi. Cari jurnal yang belum direvisi.`
-          );
-          setJurnalOriginal(null);
-        } else {
-          // Simpan salinan data untuk revisi
-          setJurnalOriginal(found);
-          setJurnalRevisi({
-            ...found,
-            details: [...found.details.map((d) => ({ ...d }))],
-          });
-          setSearchError(null);
-        }
+      const listData = result.data || [];
+      if (Array.isArray(listData) && listData.length > 0) {
+        setSelectedId(listData[0].id);
       } else {
-        setSearchError(
-          `Nomor Bukti Jurnal ${searchQuery} tidak ditemukan atau statusnya tidak valid.`
-        );
+        const msg = `Jurnal "${searchQuery}" tidak ditemukan.`;
+        setSearchError(msg);
+        Swal.fire({ icon: "error", title: "Tidak Ditemukan", text: msg });
       }
-      setIsSearching(false);
-    }, 1000);
+    } catch (error) {
+      console.error(error);
+      setSearchError("Terjadi kesalahan koneksi.");
+    }
   };
 
-  // --- HANDLER UPDATE REVISI ---
-  const handleUpdateRevisi = <K extends keyof JurnalDetail>(
+  // --- EFFECT: MAP DATA API KE FORM STATE ---
+  useEffect(() => {
+    if (journalOriginal && !isFetchingDetail && selectedId !== null) {
+      const mappedDetails: EditableJournalDetail[] = (journalOriginal.details || []).map((d) => ({
+        id: d.id,
+        coa_id: d.coa_id,
+        type: d.type,
+        debit: Number(d.debit),
+        credit: Number(d.credit),
+        memo: d.memo || "",
+      }));
+
+      setFormState({
+        description: journalOriginal.description || "",
+        details: mappedDetails,
+      });
+    }
+  }, [journalOriginal, isFetchingDetail, selectedId]);
+
+  // --- HANDLER EDIT FORM ---
+  const handleDetailChange = (
     index: number,
-    field: K,
-    value: JurnalDetail[K]
+    field: keyof EditableJournalDetail,
+    value: number | string
   ) => {
-    if (!jurnalRevisi) return;
+    if (!formState) return;
 
-    const newDetails = jurnalRevisi.details.map((detail, i) => {
-      if (i === index) {
-        // Jika field COA berubah, update COA dan COA name
-        if (field === "coa") {
-          const newCoa = dummyCOAs.find((c) => c.id === value);
-          return {
-            ...detail,
-            coa: value as string,
-            coa_name: newCoa?.name || "COA Tidak Ditemukan",
-          };
-        }
-        return { ...detail, [field]: value };
-      }
-      return detail;
-    });
+    const newDetails = [...formState.details];
 
-    setJurnalRevisi({ ...jurnalRevisi, details: newDetails });
+    // Logika Eksklusif Debit/Kredit
+    if (field === "debit") {
+       const numVal = value as number;
+       newDetails[index] = { ...newDetails[index], debit: numVal, credit: 0 }; // Reset kredit jika debit diisi
+    } else if (field === "credit") {
+       const numVal = value as number;
+       newDetails[index] = { ...newDetails[index], credit: numVal, debit: 0 }; // Reset debit jika kredit diisi
+    } else {
+       newDetails[index] = { ...newDetails[index], [field]: value };
+    }
+
+    setFormState({ ...formState, details: newDetails });
   };
 
-  // --- HANDLER POST REVISI ---
+  // --- HITUNG TOTAL ---
+  const totalDebit = formState?.details.reduce((acc, curr) => acc + curr.debit, 0) || 0;
+  const totalCredit = formState?.details.reduce((acc, curr) => acc + curr.credit, 0) || 0;
+  const isBalanced = Math.abs(totalDebit - totalCredit) < 1;
+
+  // --- HANDLER SIMPAN ---
   const handlePostRevisi = async () => {
-    if (!jurnalRevisi || !jurnalOriginal) return;
+    if (!formState || !selectedId || !journalOriginal) return;
 
-    // Cek apakah ada perubahan
-    const originalString = JSON.stringify({
-      deskripsi: jurnalOriginal.deskripsi,
-      details: jurnalOriginal.details,
-    });
-    const revisedString = JSON.stringify({
-      deskripsi: jurnalRevisi.deskripsi,
-      details: jurnalRevisi.details,
-    });
-
-    if (originalString === revisedString) {
-      return Swal.fire(
-        "Perhatian",
-        "Tidak ada perubahan yang dilakukan.",
-        "info"
-      );
+    if (!isBalanced) {
+      return Swal.fire("Tidak Balance", "Total Debet dan Kredit harus sama.", "warning");
     }
 
     const { isConfirmed } = await Swal.fire({
-      title: "Konfirmasi Revisi Jurnal",
-      html: `
-        Anda akan merevisi Jurnal **${
-          jurnalRevisi.no_bukti
-        }** (Total: ${formatRupiah(jurnalRevisi.total_nominal)}).
-        <p class="mt-2 text-red-600 font-semibold">Revisi akan menggantikan COA/Keterangan lama tanpa memengaruhi Nominal.</p>
-      `,
-      icon: "warning",
+      title: "Simpan Revisi?",
+      html: `Anda akan memperbarui Jurnal <b>${journalOriginal.reference}</b>.`,
+      icon: "question",
       showCancelButton: true,
-      confirmButtonText: "Proses Revisi",
+      confirmButtonText: "Ya, Simpan",
     });
 
     if (!isConfirmed) return;
 
     setIsRevising(true);
 
-    // Simulasi pemrosesan Revisi
-    setTimeout(() => {
-      setIsRevising(false);
-
-      // Update status di daftar dummy (hanya untuk simulasi)
-      const index = initialDummyJurnalList.findIndex(
-        (d) => d.no_bukti === jurnalRevisi.no_bukti
-      );
-      if (index !== -1) {
-        initialDummyJurnalList[index].deskripsi = jurnalRevisi.deskripsi;
-        initialDummyJurnalList[index].details = jurnalRevisi.details;
-        initialDummyJurnalList[index].status = "Revisi";
-      }
-
-      Swal.fire({
-        icon: "success",
-        title: "Revisi Berhasil!",
-        text: `Jurnal ${jurnalRevisi.no_bukti} berhasil direvisi.`,
+    try {
+      const detailsPayload: JournalDetailForm[] = formState.details.map((d) => {
+        let type: "debit" | "credit" = "debit";
+        if (d.credit > 0) type = "credit";
+        
+        return {
+          coa_id: Number(d.coa_id),
+          type: type,
+          debit: d.debit,
+          credit: d.credit,
+          memo: d.memo,
+        };
       });
 
-      // Reset tampilan
-      setJurnalOriginal(null);
-      setJurnalRevisi(null);
+      const payload: UpdateJournalRequest = {
+        date: journalOriginal.date ? journalOriginal.date.substring(0, 10) : new Date().toISOString().substring(0, 10),
+        description: formState.description,
+        is_posted: 1,
+        details: detailsPayload,
+      };
+
+      await updateJournal({ id: selectedId, data: payload }).unwrap();
+      Swal.fire("Berhasil", "Jurnal berhasil direvisi.", "success");
       setSearchQuery("");
-    }, 2500);
+      setSelectedId(null);
+      setFormState(null);
+    } catch (error) {
+      console.error(error);
+      Swal.fire("Gagal", "Gagal menyimpan revisi.", "error");
+    } finally {
+      setIsRevising(false);
+    }
   };
 
   return (
     <div className="p-6 space-y-6">
       <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
         <Edit className="h-6 w-6 text-primary" />
-        Revisi Jurnal Posting
+        Revisi Jurnal Transaksi
       </h2>
 
-      {/* --- KARTU PENCARIAN --- */}
+      {/* --- PENCARIAN --- */}
       <Card className="shadow-lg border-t-4 border-indigo-500">
         <CardHeader>
           <CardTitle className="text-xl flex items-center gap-2 text-indigo-600">
-            <Search className="h-5 w-5" /> Cari Jurnal yang Akan Direvisi
+            <Search className="h-5 w-5" /> Cari Jurnal
           </CardTitle>
         </CardHeader>
         <CardContent className="flex gap-4 items-end">
@@ -290,186 +260,226 @@ export default function RevisiJurnalPage() {
             <Label htmlFor="bukti">Nomor Bukti Jurnal</Label>
             <Input
               id="bukti"
-              placeholder="Masukkan Nomor Bukti Jurnal (Cth: JRN-1001)"
+              placeholder="Contoh: JOUR/2025..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === "Enter") handleSearch();
-              }}
-              disabled={isSearching || isRevising}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              disabled={isSearching || isUpdating || isRevising}
             />
           </div>
           <Button
             onClick={handleSearch}
-            disabled={isSearching || isRevising}
-            className="h-10"
+            disabled={isSearching || isUpdating || isRevising}
+            className="h-10 w-32"
           >
-            {isSearching ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Search className="h-5 w-5" />
-            )}
+            {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cari"}
           </Button>
         </CardContent>
         {searchError && (
-          <p className="text-sm text-red-500 px-6 pb-4">{searchError}</p>
+          <div className="px-6 pb-6 pt-0">
+            <div className="p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              {searchError}
+            </div>
+          </div>
         )}
       </Card>
 
-      {/* --- KARTU DETAIL JURNAL DITEMUKAN --- */}
-      {jurnalRevisi && jurnalOriginal && (
-        <Card className="shadow-lg border-t-4 border-yellow-500">
+      {/* --- FORM REVISI --- */}
+      {journalOriginal && formState && !searchError && (
+        <Card className="shadow-lg border-t-4 border-yellow-500 animate-in fade-in zoom-in-95 duration-300">
           <CardHeader>
-            <CardTitle className="text-xl flex items-center gap-2 text-yellow-700">
-              <Edit className="h-5 w-5" /> Koreksi Jurnal **
-              {jurnalRevisi.no_bukti}**
-            </CardTitle>
-            <p className="text-sm text-gray-500">
-              **Perhatian:** Anda hanya dapat merevisi **Deskripsi/Keterangan**
-              dan **Akun (COA)**. Nominal tidak dapat diubah di sini.
-            </p>
+            <div className="flex justify-between items-start">
+              <div>
+                <CardTitle className="text-xl flex items-center gap-2 text-yellow-700">
+                  <Edit className="h-5 w-5" /> Form Koreksi Jurnal
+                </CardTitle>
+                <div className="text-sm text-gray-500 mt-1">
+                  Revisi Dokumen: <b>{journalOriginal.reference}</b>
+                </div>
+              </div>
+              <div className="text-right text-sm">
+                <div className="flex items-center gap-1 text-gray-600 justify-end">
+                  <Calendar className="h-4 w-4" /> {journalOriginal.date?.substring(0, 10)}
+                </div>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            {/* Header Jurnal yang Dapat Diedit */}
-            <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b">
-              <div>
-                <p className="text-sm text-gray-500">Tanggal Posting</p>
-                <p className="font-bold flex items-center gap-1">
-                  <Calendar className="h-4 w-4" /> {jurnalOriginal.tanggal}
-                </p>
+
+          <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label>Deskripsi Jurnal</Label>
+              <Input
+                value={formState.description}
+                onChange={(e) => setFormState({ ...formState, description: e.target.value })}
+                placeholder="Deskripsi Jurnal"
+              />
+            </div>
+
+            {/* TABEL DETAIL */}
+            <div className="border rounded-lg overflow-hidden">
+              <div className="bg-yellow-50 px-4 py-2 border-b flex justify-between items-center">
+                <h4 className="font-semibold text-yellow-800">Rincian Akun</h4>
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Total Nominal</p>
-                <p className="font-bold text-lg text-primary">
-                  {formatRupiah(jurnalOriginal.total_nominal)}
-                </p>
-              </div>
-              <div className="col-span-1">
-                <Label
-                  htmlFor="rev_deskripsi"
-                  className="text-sm text-gray-500"
-                >
-                  Revisi Deskripsi Jurnal
-                </Label>
-                <Input
-                  id="rev_deskripsi"
-                  value={jurnalRevisi.deskripsi}
-                  onChange={(e) =>
-                    setJurnalRevisi({
-                      ...jurnalRevisi,
-                      deskripsi: e.target.value,
-                    })
-                  }
-                  className="mt-1"
-                />
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100 text-gray-700">
+                    <tr>
+                      <th className="px-4 py-2 w-[35%]">Akun (COA)</th>
+                      <th className="px-4 py-2 w-[25%]">Keterangan Baris</th>
+                      <th className="px-4 py-2 w-[20%] text-right">Debet</th>
+                      <th className="px-4 py-2 w-[20%] text-right">Kredit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {formState.details.map((detail, index) => (
+                      <tr key={index} className="bg-white hover:bg-gray-50 transition-colors">
+                        
+                        {/* 1. COMBOBOX COA (Searchable) */}
+                        <td className="px-4 py-2 align-top">
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn(
+                                  "w-full justify-between font-normal text-left",
+                                  !detail.coa_id && "text-muted-foreground"
+                                )}
+                              >
+                                {detail.coa_id
+                                  ? coas.find((c) => c.id === detail.coa_id)
+                                    ? `${coas.find((c) => c.id === detail.coa_id)?.code} - ${coas.find((c) => c.id === detail.coa_id)?.name}`
+                                    : "COA tidak ditemukan"
+                                  : "Pilih Akun"}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[400px] p-0" align="start">
+                              <Command>
+                                <CommandInput placeholder="Cari kode atau nama akun..." />
+                                <CommandList>
+                                  <CommandEmpty>Akun tidak ditemukan.</CommandEmpty>
+                                  <CommandGroup>
+                                    {coas.map((coa) => (
+                                      <CommandItem
+                                        key={coa.id}
+                                        value={`${coa.code} ${coa.name}`} // Value gabungan untuk pencarian command
+                                        onSelect={() => {
+                                          handleDetailChange(index, "coa_id", coa.id);
+                                        }}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            detail.coa_id === coa.id ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                        <span className="font-mono mr-2">{coa.code}</span>
+                                        {coa.name}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                        </td>
+
+                        {/* 2. KETERANGAN BARIS */}
+                        <td className="px-4 py-2 align-top">
+                          <Input
+                            value={detail.memo}
+                            onChange={(e) => handleDetailChange(index, "memo", e.target.value)}
+                            placeholder="Keterangan opsional per baris"
+                            className="p-1 h-9"
+                          />
+                        </td>
+
+                        {/* 3. INPUT DEBET (Formatted) */}
+                        <td className="px-4 py-2 align-top">
+                          <Input
+                            value={detail.debit > 0 ? formatRupiah(detail.debit) : ""}
+                            onChange={(e) =>
+                              handleDetailChange(index, "debit", parseNominal(e.target.value))
+                            }
+                            placeholder="0"
+                            className="p-1 h-9 text-right font-mono border-red-200 focus:border-red-500"
+                          />
+                        </td>
+
+                        {/* 4. INPUT KREDIT (Formatted) */}
+                        <td className="px-4 py-2 align-top">
+                          <Input
+                            value={detail.credit > 0 ? formatRupiah(detail.credit) : ""}
+                            onChange={(e) =>
+                              handleDetailChange(index, "credit", parseNominal(e.target.value))
+                            }
+                            placeholder="0"
+                            className="p-1 h-9 text-right font-mono border-green-200 focus:border-green-500"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t font-bold">
+                    <tr>
+                      <td colSpan={2} className="px-4 py-3 text-right text-gray-600">
+                        TOTAL
+                      </td>
+                      <td className={cn("px-4 py-3 text-right", isBalanced ? "text-green-600" : "text-red-600")}>
+                        {formatRupiah(totalDebit)}
+                      </td>
+                      <td className={cn("px-4 py-3 text-right", isBalanced ? "text-green-600" : "text-red-600")}>
+                        {formatRupiah(totalCredit)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             </div>
 
-            {/* Tabel Detail Jurnal yang Dapat Diedit */}
-            <h4 className="font-semibold text-lg mb-2">
-              Revisi Rincian Debet / Kredit:
-            </h4>
-            <div className="p-0 overflow-x-auto border rounded-lg">
-              <table className="min-w-full text-sm">
-                <thead className="bg-yellow-50 text-left">
-                  <tr>
-                    <th className="px-4 py-2 w-[250px]">COA (Akun)</th>
-                    <th className="px-4 py-2">Keterangan Baris</th>
-                    <th className="px-4 py-2 text-right w-[150px]">Debet</th>
-                    <th className="px-4 py-2 text-right w-[150px]">Kredit</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jurnalRevisi.details.map((detail, index) => (
-                    <tr key={index} className="border-t">
-                      <td className="px-4 py-2">
-                        <select
-                          value={detail.coa}
-                          onChange={(e) =>
-                            handleUpdateRevisi(index, "coa", e.target.value)
-                          }
-                          className="w-full p-1 border rounded"
-                        >
-                          {dummyCOAs.map((coa) => (
-                            <option key={coa.id} value={coa.id}>
-                              {coa.id} - {coa.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-2">
-                        <Input
-                          value={detail.keterangan_baris}
-                          onChange={(e) =>
-                            handleUpdateRevisi(
-                              index,
-                              "keterangan_baris",
-                              e.target.value
-                            )
-                          }
-                          placeholder="Keterangan per baris"
-                          className="p-1 h-8"
-                        />
-                      </td>
-                      <td className="px-4 py-2 text-right text-red-600">
-                        {formatRupiah(detail.debet)}
-                      </td>
-                      <td className="px-4 py-2 text-right text-green-600">
-                        {formatRupiah(detail.kredit)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-yellow-100 font-bold">
-                  <tr>
-                    <td colSpan={2} className="px-4 py-2 text-right">
-                      TOTAL NOMINAL JURNAL
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      {formatRupiah(jurnalOriginal.total_nominal)}
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      {formatRupiah(jurnalOriginal.total_nominal)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+            {!isBalanced && (
+              <div className="p-3 bg-red-100 text-red-700 rounded text-sm flex items-center justify-between">
+                <span className="flex items-center gap-2 font-semibold">
+                  <AlertTriangle className="h-4 w-4" /> Jurnal Tidak Seimbang!
+                </span>
+                <span>Selisih: {formatRupiah(Math.abs(totalDebit - totalCredit))}</span>
+              </div>
+            )}
           </CardContent>
-          <CardFooter>
+
+          <CardFooter className="bg-gray-50 p-4 border-t flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setFormState(null);
+                setSelectedId(null);
+                setSearchQuery("");
+              }}
+            >
+              Batal
+            </Button>
             <Button
               onClick={handlePostRevisi}
-              disabled={isRevising}
-              className="w-full text-lg bg-primary hover:bg-indigo-700"
+              disabled={isUpdating || isRevising || !isBalanced}
+              className="w-full sm:w-auto bg-primary hover:bg-blue-700"
             >
-              {isRevising ? (
+              {isUpdating || isRevising ? (
                 <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Memproses Revisi...
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Menyimpan...
                 </>
               ) : (
                 <>
-                  <Save className="mr-2 h-5 w-5" />
-                  Simpan Revisi
+                  <Save className="mr-2 h-4 w-4" />
+                  Simpan Perubahan
                 </>
               )}
             </Button>
           </CardFooter>
         </Card>
-      )}
-
-      {/* --- INFO --- */}
-      {!jurnalRevisi && !searchError && !isSearching && (
-        <div className="mt-8 p-4 bg-blue-50 border-l-4 border-blue-500 text-blue-700 rounded-lg">
-          <p className="font-semibold flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5" /> Informasi Revisi
-          </p>
-          <p className="text-sm mt-1">
-            Gunakan fungsi ini hanya untuk mengoreksi **COA** atau
-            **Keterangan**. Jika nominal salah, batalkan jurnal menggunakan menu
-            **Pembatalan Jurnal** dan posting ulang dengan nilai yang benar.
-          </p>
-        </div>
       )}
     </div>
   );

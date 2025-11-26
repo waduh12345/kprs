@@ -123,8 +123,10 @@ export interface GetJournalListParams {
   paginate: number;
   orderBy?: string;
   order?: "asc" | "desc" | string;
-  searchBySpecific?: string; // e.g. "reference"
-  search?: string; // search value
+  from_date?: string; 
+  to_date?: string;   
+  searchBySpecific?: string; 
+  search?: string; 
 }
 
 export const journalService = apiSlice.injectEndpoints({
@@ -137,18 +139,26 @@ export const journalService = apiSlice.injectEndpoints({
         order = "desc",
         searchBySpecific = "",
         search = "",
-      }) => ({
-        url: `/accounting/journals`,
-        method: "GET",
-        params: {
+        from_date = "",
+        to_date = "",
+      }) => {
+        const params: Record<string, any> = {
           page,
           paginate,
           orderBy,
           order,
           searchBySpecific,
           search,
-        },
-      }),
+        };
+        if (from_date) params.from_date = from_date;
+        if (to_date) params.to_date = to_date;
+
+        return {
+          url: `/accounting/journals`,
+          method: "GET",
+          params,
+        };
+      },
       transformResponse: (response: {
         code: number;
         message: string;
@@ -208,14 +218,16 @@ export const journalService = apiSlice.injectEndpoints({
 
     getCOAList: builder.query<
       COAListResponse,
-      { page: number; paginate: number }
+      { page: number; paginate: number; orderBy?: string; order?: "asc" | "desc" }
     >({
-      query: ({ page, paginate }) => ({
+      query: ({ page, paginate, orderBy, order }) => ({
         url: `/master/coas`,
         method: "GET",
         params: {
           page,
           paginate,
+          orderBy,
+          order,
         },
       }),
       transformResponse: (response: {
@@ -228,8 +240,10 @@ export const journalService = apiSlice.injectEndpoints({
   }),
 });
 
+// ⬇️ Tambahkan useLazyGetJournalListQuery di sini
 export const {
   useGetJournalListQuery,
+  useLazyGetJournalListQuery, // <--- INI YANG DITAMBAHKAN
   useGetJournalByIdQuery,
   useCreateJournalMutation,
   useUpdateJournalMutation,

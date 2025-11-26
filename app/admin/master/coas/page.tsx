@@ -5,6 +5,7 @@ import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import useModal from "@/hooks/use-modal";
+import { Plus } from "lucide-react"; // ⬅️ 1. Import Icon
 import {
   useGetCoaListQuery,
   useCreateCoaMutation,
@@ -15,16 +16,22 @@ import {
 } from "@/services/master/coa.service";
 import type { CoaKoperasi } from "@/types/koperasi-types/master/coa";
 import CoaForm from "@/components/form-modal/koperasi-modal/master/coa-form";
+import CoaChildForm from "@/components/form-modal/koperasi-modal/master/coa-child-form";
 import { ProdukToolbar } from "@/components/ui/produk-toolbar";
 import ActionsGroup from "@/components/admin-components/actions-group";
 
 export default function CoaPage() {
-  // ⬇️ level tidak diset default, type default "Global"
   const [form, setForm] = useState<Partial<CoaKoperasi>>({
     type: "Global",
   });
   const [editingId, setEditingId] = useState<number | null>(null);
   const [readonly, setReadonly] = useState(false);
+  
+  // ⬇️ 2. Tambahkan state untuk Child Modal
+  const [isOpenChild, setIsOpenChild] = useState(false);
+
+  const [selectedParent, setSelectedParent] = useState<CoaKoperasi | null>(null);
+
   const { isOpen, openModal, closeModal } = useModal();
 
   const itemsPerPage = 10;
@@ -50,7 +57,6 @@ export default function CoaPage() {
       if (!form.code || !form.name) {
         throw new Error("Kode dan Nama wajib diisi");
       }
-      // ⬇️ pastikan level diisi
       if (
         form.level === undefined ||
         form.level === null ||
@@ -60,11 +66,13 @@ export default function CoaPage() {
       }
 
       const payload: CreateCoaRequest | UpdateCoaRequest = {
+        coa_id: form.coa_id,
         code: form.code,
         name: form.name,
         description: form.description ?? "",
-        level: Number(form.level), // ⬅️ required
-        type: form.type ?? "Global", // ⬅️ default Global
+        level: Number(form.level),
+        type: form.type ?? "Global",
+        // parent_id: form.parent_id // ⬅️ Pastikan payload menghandle parent_id jika ada di form child
       };
 
       if (editingId) {
@@ -75,10 +83,14 @@ export default function CoaPage() {
         Swal.fire("Sukses", "COA ditambahkan", "success");
       }
 
-      setForm({ type: "Global" }); // ⬅️ reset tanpa level default
+      setForm({ type: "Global" });
       setEditingId(null);
       await refetch();
-      closeModal();
+      
+      // Tutup kedua kemungkinan modal
+      closeModal(); 
+      setIsOpenChild(false); 
+
     } catch (error) {
       console.error(error);
       Swal.fire(
@@ -100,6 +112,18 @@ export default function CoaPage() {
     setForm(item);
     setReadonly(true);
     openModal();
+  };
+
+  // ⬇️ 3. Handle Add Child Logic
+  const handleAddChild = (parent: CoaKoperasi) => {
+    setSelectedParent(parent); // ⬅️ Simpan object parent
+    setForm({
+      // coa_id akan di-handle oleh useEffect di dalam ChildForm
+      // level akan di-handle oleh useEffect di dalam ChildForm
+    });
+    setEditingId(null);
+    setReadonly(false);
+    setIsOpenChild(true);
   };
 
   const handleDelete = async (item: CoaKoperasi) => {
@@ -137,7 +161,7 @@ export default function CoaPage() {
     <div className="p-6 space-y-6">
       <ProdukToolbar
         openModal={() => {
-          setForm({ type: "Global" }); // ⬅️ tidak set level
+          setForm({ type: "Global" });
           setEditingId(null);
           setReadonly(false);
           openModal();
@@ -150,7 +174,7 @@ export default function CoaPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted text-left">
               <tr>
-                <th className="px-4 py-2">Aksi</th>
+                <th className="px-4 py-2 w-[180px]">Aksi</th> {/* ⬅️ Lebarkan sedikit kolom aksi */}
                 <th className="px-4 py-2">Kode</th>
                 <th className="px-4 py-2">Nama</th>
                 <th className="px-4 py-2">Deskripsi</th>
@@ -176,11 +200,24 @@ export default function CoaPage() {
                 filtered.map((item) => (
                   <tr key={item.id} className="border-t">
                     <td className="px-4 py-2">
-                      <ActionsGroup
-                        handleDetail={() => handleDetail(item)}
-                        handleEdit={() => handleEdit(item)}
-                        handleDelete={() => handleDelete(item)}
-                      />
+                      {/* ⬇️ 4. Wrapper Flex untuk Button Child */}
+                      <div className="flex items-center gap-1">
+                        <ActionsGroup
+                          handleDetail={() => handleDetail(item)}
+                          handleEdit={() => handleEdit(item)}
+                          handleDelete={() => handleDelete(item)}
+                        />
+                        {/* Tombol Add Child */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                          onClick={() => handleAddChild(item)}
+                          title="Tambah Anak COA"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </td>
                     <td className="px-4 py-2 font-mono text-sm">{item.code}</td>
                     <td className="px-4 py-2 font-medium">{item.name}</td>
@@ -223,16 +260,38 @@ export default function CoaPage() {
         </div>
       </Card>
 
+      {/* Modal Utama */}
       {isOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <CoaForm
             form={form}
             setForm={setForm}
             onCancel={() => {
-              setForm({ type: "Global" }); // ⬅️ reset tanpa level
+              setForm({ type: "Global" });
               setEditingId(null);
               setReadonly(false);
               closeModal();
+            }}
+            onSubmit={handleSubmit}
+            readonly={readonly}
+            isLoading={isCreating || isUpdating}
+          />
+        </div>
+      )}
+
+      {/* ⬇️ 5. Modal Child (Logic diperbaiki) */}
+      {isOpenChild && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <CoaChildForm
+            form={form}
+            setForm={setForm}
+            parent={selectedParent} // ⬅️ Pass prop parent di sini
+            onCancel={() => {
+              setForm({ type: "Global" });
+              setEditingId(null);
+              setReadonly(false);
+              setSelectedParent(null); // Reset parent saat close
+              setIsOpenChild(false);
             }}
             onSubmit={handleSubmit}
             readonly={readonly}
