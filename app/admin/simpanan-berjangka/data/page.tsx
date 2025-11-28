@@ -474,7 +474,7 @@ export default function SimpananBerjangkaPage() {
                           additionalActions={
                             <div className="flex items-center gap-2">
                               {/* Tombol Tambah Modal */}
-                              <Tooltip>
+                              {/* <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Button
                                     size="sm"
@@ -488,7 +488,7 @@ export default function SimpananBerjangkaPage() {
                                 <TooltipContent>
                                   <p>Tambah Modal/Top Up</p>
                                 </TooltipContent>
-                              </Tooltip>
+                              </Tooltip> */}
 
                               {/* Tombol Approve dan Reject hanya muncul jika status Pending */}
                               {item.status === "Pending" && (
@@ -524,26 +524,6 @@ export default function SimpananBerjangkaPage() {
                                   </Tooltip>
                                 </>
                               )}
-
-                              {/* History Transaksi */}
-                              {/* <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      router.push(
-                                        `/admin/simpanan-berjangka/transaksi-simjaka?rekening=${item.reference}`
-                                      )
-                                    }
-                                  >
-                                    <HistoryIcon className="size-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>History Transaksi</p>
-                                </TooltipContent>
-                              </Tooltip> */}
                             </div>
                           }
                         />
@@ -564,7 +544,7 @@ export default function SimpananBerjangkaPage() {
                         {formatRupiah(item.nominal_current)}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {item.term_months} bulan
+                        {item.term_months}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {displayDate(item.date)}

@@ -14,7 +14,6 @@ import {
   useUpdateSimpananBerjangkaMutation,
 } from "@/services/admin/simpanan/simpanan-berjangka.service";
 import { useGetAnggotaListQuery } from "@/services/koperasi-service/anggota.service";
-// Perhatikan: asumsikan useGetSimpananBerjangkaCategoriesListQuery tersedia di path yang sama atau path yang relevan
 import { useGetSimpananBerjangkaCategoriesListQuery } from "@/services/admin/konfigurasi/simpanan-berjangka-kategori.service";
 
 import { Combobox } from "@/components/ui/combo-box";
@@ -25,8 +24,7 @@ type Props = {
   onCancel?: () => void;
 };
 
-// Interface Category disesuaikan untuk SimpananBerjangkaCategories
-// Menambahkan properti opsional untuk mengatasi ketidakpastian struktur respons mentah
+// Interface Category
 interface RawCategoryResponseItem {
   id: number;
   name?: string | null;
@@ -34,10 +32,10 @@ interface RawCategoryResponseItem {
   category_code?: string | null;
 }
 
-// Interface Category yang digunakan di Combobox
+// Interface Combobox Category
 type Category = {
   id: number;
-  name: string; // Menggunakan 'name' sebagai label utama yang sudah diolah
+  name: string;
   category_code?: string | null;
 };
 
@@ -49,10 +47,15 @@ type Anggota = {
   full_name?: string | null;
 };
 
-// Response Wrapper yang umum dari API dengan Paginasi/Wrapper Data
 interface PaginatedResponse<T> {
   data?: T[] | { data?: T[] };
 }
+
+// --- HELPER FORMAT NOMINAL ---
+const formatNumber = (num: number | undefined | null) => {
+  if (num === undefined || num === null) return "";
+  return new Intl.NumberFormat("id-ID").format(num);
+};
 
 export default function SimpananBerjangkaForm({
   id,
@@ -64,19 +67,21 @@ export default function SimpananBerjangkaForm({
     paginate: 100,
     page: 1,
   });
+
+  // --- LOGIKA PENCARIAN ANGGOTA ---
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const minSearchLength = 3; // Batas minimal huruf
+
   const anggotaQuery = useGetAnggotaListQuery(
     { paginate: 100, page: 1, search: searchQuery },
-    { skip: !searchQuery || searchQuery.length < 2 } // Skip query jika searchQuery belum 2 karakter
+    { skip: searchQuery.length < minSearchLength } // Skip jika kurang dari 3 huruf
   );
 
-  // kategoriOptions (typed: Category[])
+  // kategoriOptions
   const kategoriOptions = useMemo<Category[]>(() => {
     const resp =
       kategoriQuery.data as PaginatedResponse<RawCategoryResponseItem>;
-
     if (!resp || !resp.data) return [];
-
     const raw: RawCategoryResponseItem[] = Array.isArray(resp.data)
       ? resp.data
       : resp.data.data ?? [];
@@ -90,13 +95,15 @@ export default function SimpananBerjangkaForm({
       .filter((c) => !!c.id && !!c.name);
   }, [kategoriQuery.data]);
 
+  // anggotaOptions
   const anggotaOptions = useMemo<Anggota[]>(() => {
+    // Jika query kurang dari 3 huruf, kembalikan array kosong agar list tidak tampil
+    if (searchQuery.length < minSearchLength) return [];
+
     const resp = anggotaQuery.data as PaginatedResponse<Anggota>;
-
     if (!resp || !resp.data) return [];
-
     return Array.isArray(resp.data) ? resp.data : resp.data.data ?? [];
-  }, [anggotaQuery.data]);
+  }, [anggotaQuery.data, searchQuery]); // Dependency pada searchQuery
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
@@ -108,7 +115,7 @@ export default function SimpananBerjangkaForm({
     { skip: !id }
   );
 
-  // State untuk form. Penting: Gunakan undefined untuk field yang boleh kosong
+  // State Form
   const initialFormState: Partial<SimpananBerjangka> = useMemo(
     () => ({
       simpanan_berjangka_category_id: undefined,
@@ -117,9 +124,9 @@ export default function SimpananBerjangkaForm({
       date: "",
       nominal: undefined,
       term_months: undefined,
-      type: "manual", // Default: manual
-      payment_method: undefined, // Field dari SimpananBerjangka interface
-      payment_channel: undefined, // Field dari SimpananBerjangka interface
+      type: "manual",
+      payment_method: undefined,
+      payment_channel: undefined,
       image: null,
     }),
     []
@@ -143,22 +150,19 @@ export default function SimpananBerjangkaForm({
       byIdQuery.data.data
     ) {
       const d = byIdQuery.data.data as SimpananBerjangka;
-      // Isi form dengan data yang didapat
       setForm({
         simpanan_berjangka_category_id: d.simpanan_berjangka_category_id,
         user_id: d.user_id,
         description: d.description ?? "",
-        // Konversi date string agar sesuai dengan input datetime-local
         date: d.date ? d.date.substring(0, 16) : "",
         nominal: d.nominal,
         term_months: d.term_months,
         type: d.type ?? "manual",
-        payment_method: d.payment_method ?? undefined, // Mengakses properti yang sudah ada di interface
-        payment_channel: d.payment_channel ?? undefined, // Mengakses properti yang sudah ada di interface
+        payment_method: d.payment_method ?? undefined,
+        payment_channel: d.payment_channel ?? undefined,
         image: d.image ?? null,
       });
     } else if (!id) {
-      // Reset form ke initial state saat mode tambah
       setForm(initialFormState);
     }
   }, [id, byIdQuery.data, initialFormState]);
@@ -171,12 +175,20 @@ export default function SimpananBerjangkaForm({
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  // --- HANDLER NOMINAL ---
+  const handleNominalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Hapus karakter selain angka
+    const rawValue = e.target.value.replace(/\D/g, "");
+    const numericValue = rawValue ? parseInt(rawValue, 10) : undefined;
+    setField("nominal", numericValue);
+  };
+
   // type guard file
   function isFile(v: unknown): v is File {
     return typeof File !== "undefined" && v instanceof File;
   }
 
-  // validation (logika validasi tetap sama)
+  // validation
   function validate(): { ok: boolean; message?: string } {
     if (!form.simpanan_berjangka_category_id)
       return { ok: false, message: "Kategori wajib diisi" };
@@ -197,7 +209,6 @@ export default function SimpananBerjangkaForm({
       return { ok: false, message: "Term bulan harus lebih dari 0" };
 
     if (form.type === "manual") {
-      // Jika mode edit dan image masih berupa string (URL lama) tidak perlu validasi file
       if (
         !form.image ||
         (typeof form.image !== "string" && !isFile(form.image))
@@ -208,7 +219,6 @@ export default function SimpananBerjangkaForm({
     }
 
     if (form.type === "automatic") {
-      // Logika untuk automatic type
       if (!form.payment_method)
         return {
           ok: false,
@@ -233,19 +243,8 @@ export default function SimpananBerjangkaForm({
       return;
     }
 
-    // Persiapan data untuk payload (menghilangkan 'as Partial<SimpananBerjangka>')
     const payload: Partial<SimpananBerjangka> = {
-      simpanan_berjangka_category_id: form.simpanan_berjangka_category_id,
-      user_id: form.user_id,
-      description: form.description,
-      date: form.date,
-      nominal: form.nominal,
-      term_months: form.term_months,
-      type: form.type,
-      payment_method: form.payment_method,
-      payment_channel: form.payment_channel,
-      image: form.image,
-      // Hapus properti yang mungkin undefined jika tidak ingin dikirim
+      ...form,
     };
 
     try {
@@ -266,22 +265,16 @@ export default function SimpananBerjangkaForm({
     }
   }
 
-  // Combobox helpers: getOptionLabel
-  const getCategoryLabel = (c: Category) =>
-    `${c.name ?? c.category_code ?? `ID:${c.id}`}`;
   const getAnggotaLabel = (a: Anggota) =>
     `${a.name ?? a.full_name ?? a.user_name ?? `Anggota ${a.id}`}${
       a.email ? ` — ${a.email}` : ""
     }`;
 
-  // refs for accessibility
   const firstInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
-    // focus first input when form mounts
     firstInputRef.current?.focus();
-  }, [id]); // Rerun effect saat id berubah (mode edit/tambah)
+  }, [id]);
 
-  // Jika sedang mode edit dan data masih loading, tampilkan loading
   const isLoadingData = id && byIdQuery.isLoading;
 
   if (isLoadingData) {
@@ -291,7 +284,7 @@ export default function SimpananBerjangkaForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Kategori (Combobox) */}
+        {/* Kategori */}
         <div>
           <Label htmlFor="category-select">Produk (Kategori)</Label>
           <div className="mt-1">
@@ -307,7 +300,7 @@ export default function SimpananBerjangkaForm({
           </div>
         </div>
 
-        {/* Anggota (Combobox) */}
+        {/* Anggota */}
         <div>
           <Label htmlFor="anggota-select">Anggota</Label>
           <div className="mt-1">
@@ -316,11 +309,21 @@ export default function SimpananBerjangkaForm({
               onChange={(v) => setField("user_id", v)}
               onSearchChange={handleSearchChange}
               data={anggotaOptions}
-              isLoading={anggotaQuery.isLoading}
-              placeholder="Pilih anggota..."
+              isLoading={
+                // Loading hanya jika query sedang berjalan dan panjang karakter cukup
+                searchQuery.length >= minSearchLength && anggotaQuery.isLoading
+              }
+              placeholder="Cari anggota..."
               getOptionLabel={(a) => getAnggotaLabel(a)}
             />
           </div>
+          {/* Tulisan bantuan jika kurang dari 3 huruf */}
+          {searchQuery.length > 0 && searchQuery.length < minSearchLength && (
+            <p className="text-xs text-red-500 mt-1">
+              * Masukkan minimal {minSearchLength} huruf untuk mencari nama
+              anggota.
+            </p>
+          )}
         </div>
 
         {/* Tanggal */}
@@ -330,29 +333,28 @@ export default function SimpananBerjangkaForm({
             id="date-input"
             ref={firstInputRef}
             type="datetime-local"
-            // Konversi date string agar sesuai dengan input datetime-local
             value={form.date ? String(form.date).substring(0, 16) : ""}
             onChange={(e) => setField("date", e.target.value)}
             className="mt-1"
           />
         </div>
 
-        {/* Nominal */}
+        {/* Nominal dengan Format */}
         <div>
           <Label htmlFor="nominal-input">Nominal</Label>
-          <Input
-            id="nominal-input"
-            type="number"
-            value={form.nominal !== undefined ? String(form.nominal) : ""}
-            onChange={(e) =>
-              setField(
-                "nominal",
-                e.target.value ? Number(e.target.value) : undefined
-              )
-            }
-            className="mt-1"
-            min={0}
-          />
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+              Rp
+            </span>
+            <Input
+              id="nominal-input"
+              type="text" // Menggunakan text agar bisa ada separator
+              value={formatNumber(form.nominal)} // Tampilkan format ribuan
+              onChange={handleNominalChange}
+              className="pl-9" // Padding kiri untuk "Rp"
+              placeholder="0"
+            />
+          </div>
         </div>
 
         {/* Term */}
@@ -466,11 +468,10 @@ export default function SimpananBerjangkaForm({
               accept="image/*"
               onChange={(e) => {
                 const f = e.target.files?.[0] ?? null;
-                setField("image", f); // Simpan File object atau null
+                setField("image", f);
               }}
             />
 
-            {/* Tampilkan preview jika ada URL lama atau File object baru (gunakan URL.createObjectURL) */}
             {form.image && (
               <div className="mt-2">
                 <img
@@ -487,14 +488,12 @@ export default function SimpananBerjangkaForm({
               </div>
             )}
 
-            {!form.image &&
-              !id && ( // Tampilkan info jika mode tambah dan belum ada gambar
-                <div className="mt-1 text-sm text-muted-foreground">
-                  Belum ada gambar yang dipilih.
-                </div>
-              )}
+            {!form.image && !id && (
+              <div className="mt-1 text-sm text-muted-foreground">
+                Belum ada gambar yang dipilih.
+              </div>
+            )}
 
-            {/* Tampilkan pesan jika ada URL lama, namun ingin diganti */}
             {typeof form.image === "string" && id && (
               <div className="mt-1 text-sm text-muted-foreground">
                 Gambar saat ini: {form.image.substring(0, 50)}...
@@ -504,7 +503,6 @@ export default function SimpananBerjangkaForm({
         </div>
       </div>
 
-      {/* actions */}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={() => onCancel?.()}>
           Batal
