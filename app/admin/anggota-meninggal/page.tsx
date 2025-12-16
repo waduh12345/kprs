@@ -88,8 +88,8 @@ export default function AnggotaMeninggalPage() {
     () =>
       (anggotaData?.data || []).map((a) => ({
         id: a.id,
-        name: a.name,
-        email: a.email,
+        name: a.name ?? "",
+        email: a.email ?? "",
       })),
     [anggotaData?.data]
   );

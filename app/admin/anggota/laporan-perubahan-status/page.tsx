@@ -53,6 +53,7 @@ const dummyStatusHistory: StatusChangeReportItem[] = [
 
     previous_status: 0,
     changed_at: "2024-10-01",
+    type: ""
   },
   {
     id: 2,
@@ -82,6 +83,7 @@ const dummyStatusHistory: StatusChangeReportItem[] = [
 
     previous_status: 1,
     changed_at: "2024-10-15",
+    type: ""
   },
   {
     id: 3,
@@ -111,6 +113,7 @@ const dummyStatusHistory: StatusChangeReportItem[] = [
 
     previous_status: 0,
     changed_at: "2024-09-20",
+    type: ""
   },
 ];
 

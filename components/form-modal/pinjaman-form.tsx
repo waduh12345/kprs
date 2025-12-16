@@ -14,8 +14,8 @@ import { Combobox } from "@/components/ui/combo-box"; // Pastikan path ini sesua
 export type Anggota = {
   id: number;
   user_id: number;
-  name?: string | null;
-  email?: string | null;
+  user_name?: string | null;
+  user_email?: string | null;
   status?: number | null;
 };
 export const MIN_CHARS = 3;

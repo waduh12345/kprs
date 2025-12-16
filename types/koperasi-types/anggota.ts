@@ -32,9 +32,13 @@ export interface AnggotaKoperasi {
   user_id: number | null;
   reference: string;
   ref_number: 1;
-  name: string;
-  email: string;
-  phone: string;
+  user_name?: string;
+  user_email?: string;
+  type: string;
+  user_phone?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
   address: string;
   gender: string; // M or F
   birth_date: string;
@@ -48,4 +52,5 @@ export interface AnggotaKoperasi {
   unit_kerja: string | null;
   jabatan: string | null;
   documents: DocumentsAnggota[];
+  registration_number?: string;
 }

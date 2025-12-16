@@ -279,7 +279,7 @@ export default function AnggotaPage() {
                 <th className="px-4 py-2">Nama</th>
                 <th className="px-4 py-2">Email</th>
                 <th className="px-4 py-2">Telepon</th>
-                <th className="px-4 py-2">Gender</th>
+                <th className="px-4 py-2">Tipe</th>
                 <th className="px-4 py-2">Status</th>
               </tr>
             </thead>
@@ -361,15 +361,15 @@ export default function AnggotaPage() {
                     <td className="px-4 py-2 whitespace-nowrap">
                       {item.reference}
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">{item.name}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">{item.user_name}</td>
                     <td className="px-4 py-2 whitespace-nowrap">
-                      {item.email}
+                      {item.user_email}
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">
-                      {item.phone}
+                      {item.user_phone}
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">
-                      {item.gender}
+                      {item.type}
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">
                       {statusBadge(item.status)}

@@ -42,11 +42,11 @@ export function AnggotaPicker({
   const shouldFetch = debouncedQuery.length >= MIN_CHARS || selectedId != null;
 
   const { data, isLoading, isError, refetch } = useGetAnggotaListQuery(
-    { page: 1, paginate: 200, status: 1 } as {
+    { page: 1, paginate: 200, status: 1, search: debouncedQuery } as {
       page: number;
       paginate: number;
       status?: number;
-      _q?: string;
+      search?: string;
     },
     { skip: !shouldFetch, refetchOnMountOrArgChange: true }
   );
@@ -61,8 +61,8 @@ export function AnggotaPicker({
     const q = debouncedQuery.toLowerCase();
     return list.filter(
       (u) =>
-        (u.name ?? "").toLowerCase().includes(q) ||
-        (u.email ?? "").toLowerCase().includes(q) ||
+        (u.user_name ?? "").toLowerCase().includes(q) ||
+        (u.user_email ?? "").toLowerCase().includes(q) ||
         String(u.user_id).includes(q)
     );
   }, [list, debouncedQuery]);
@@ -90,13 +90,13 @@ export function AnggotaPicker({
   const pick = (u: Anggota | null) => {
     onChange(u);
     setOpen(false);
-    setQuery(u ? u.name ?? u.email ?? String(u.id) : "");
+    setQuery(u ? u.user_name ?? u.user_email ?? String(u.id) : "");
   };
 
   // 🔧 FIX: fallback label supaya kelihatan saat edit sebelum data resolved
   const selectedLabel = selected
-    ? (selected.name ?? "Tanpa Nama") +
-      (selected.email ? ` (${selected.email})` : "")
+    ? (selected.user_name ?? "Tanpa Nama") +
+      (selected.user_email ? ` (${selected.user_email})` : "")
     : selectedId != null
     ? `ID: ${selectedId}`
     : null;
@@ -174,16 +174,16 @@ export function AnggotaPicker({
                       ).map((u) => (
                         <CommandItem
                           key={u.user_id}
-                          value={u.name ?? String(u.user_id)}
+                          value={u.user_name ?? String(u.user_id)}
                           onSelect={() => pick(u)}
                           className="cursor-pointer"
                         >
                           <div className="flex flex-col">
                             <span className="text-sm font-medium">
-                              {u.name ?? "Tanpa Nama"}
+                              {u.user_name ?? "Tanpa Nama"}
                             </span>
                             <span className="text-xs text-neutral-500">
-                              {u.email ?? "-"} • ID: {u.user_id}
+                              {u.user_email ?? "-"} • ID: {u.user_id}
                             </span>
                           </div>
                         </CommandItem>

@@ -8,15 +8,10 @@ import {
   useCreateAnggotaMutation,
   useUpdateAnggotaMutation,
 } from "@/services/koperasi-service/anggota.service";
-import type {
-  AnggotaKoperasi,
-  DocumentsAnggota,
-} from "@/types/koperasi-types/anggota";
-import AnggotaForm from "@/components/form-modal/koperasi-modal/anggota-form";
+import type { DocumentsAnggota } from "@/types/koperasi-types/anggota";
+import AnggotaForm, { AnggotaFormState } from "@/components/form-modal/koperasi-modal/anggota-form";
 
-type Mode = "add" | "edit" | "detail";
-
-// helper untuk membuat baris dokumen kosong yg VALID dgn tipe DocumentsAnggota
+// Helper dokumen kosong
 const makeEmptyDoc = (anggota_id = 0): DocumentsAnggota => ({
   id: 0,
   anggota_id,
@@ -24,12 +19,12 @@ const makeEmptyDoc = (anggota_id = 0): DocumentsAnggota => ({
   document: null,
   created_at: "",
   updated_at: "",
-  media: [] as unknown as DocumentsAnggota["media"],
+  media: [],
 });
 
 export default function AnggotaAddEditPage() {
   return (
-    <Suspense fallback={<div className="p-6">Memuat formulir…</div>}>
+    <Suspense fallback={<div className="p-6">Memuat formulir...</div>}>
       <AnggotaAddEditPageInner />
     </Suspense>
   );
@@ -39,117 +34,166 @@ function AnggotaAddEditPageInner() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const mode: Mode = (sp.get("mode") as Mode) || "add";
+  const mode = sp.get("mode") || "add";
   const idParam = sp.get("id");
   const id = idParam ? Number(idParam) : undefined;
-
-  const isDetail = mode === "detail";
   const isEdit = mode === "edit";
-  const isAdd = mode === "add";
+  const isDetail = mode === "detail";
 
-  const {
-    data: detailData,
-    isFetching,
-    refetch: refetchDetail,
-  } = useGetAnggotaByIdQuery(id!, {
-    skip: !(isEdit || isDetail) || !id,
+  // Fetch Data
+  const { data: detailData, isFetching } = useGetAnggotaByIdQuery(id!, {
+    skip: !id || mode === "add",
     refetchOnMountOrArgChange: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: true,
   });
-
-  useEffect(() => {
-    if ((isEdit || isDetail) && id) refetchDetail();
-  }, [isEdit, isDetail, id, refetchDetail]);
 
   const [createAnggota, { isLoading: isCreating }] = useCreateAnggotaMutation();
   const [updateAnggota, { isLoading: isUpdating }] = useUpdateAnggotaMutation();
 
-  const [form, setForm] = useState<
-    Partial<
-      AnggotaKoperasi & { password?: string; password_confirmation?: string }
-    >
-  >({
+  const [form, setForm] = useState<AnggotaFormState>({
+    type: "individu",
+    status: 0,
     documents: [makeEmptyDoc()],
   });
 
+  // --- LOGIC MAPPING DATA API KE FORM ---
   useEffect(() => {
     if ((isEdit || isDetail) && detailData) {
+      // 1. Tentukan Tipe
+      const type = (detailData.type as "individu" | "perusahaan") || "individu";
+      
+      // 2. Ambil data nested berdasarkan tipe
+      // Menggunakan 'any' sementara untuk akses properti dinamis jika tipe API belum diupdate
+      const rawData = detailData as any; 
+      const specificData = type === "individu" ? rawData.individu : rawData.perusahaan;
+
+      // 3. Siapkan Dokumen (Reset file object, pertahankan media untuk preview)
       const docs: DocumentsAnggota[] =
         detailData.documents && detailData.documents.length > 0
-          ? (detailData.documents.map((d) => ({
+          ? detailData.documents.map((d: any) => ({
               ...d,
-              document: null,
-            })) as DocumentsAnggota[])
+              document: null, // Reset input file
+              // Pastikan media terhubung agar tombol "Lihat file" muncul
+              media: d.media || [] 
+            }))
           : [makeEmptyDoc(detailData.id)];
 
-      setForm((prev) => ({ ...prev, ...detailData, documents: docs }));
+      // 4. Konstruksi Form State (Flattening Data)
+      const formData: AnggotaFormState = {
+        id: detailData.id,
+        type: type,
+        status: detailData.status, // Status ada di root
+        documents: docs,
+        
+        // Data Umum (diambil dari specificData: individu/perusahaan)
+        name: specificData?.name || "",
+        email: specificData?.email || "",
+        phone: specificData?.phone || "",
+        address: specificData?.address || "",
+        npwp: specificData?.npwp || "",
+        
+        // Data Spesifik Individu
+        ...(type === "individu" && {
+          nik: specificData?.nik,
+          gender: specificData?.gender,
+          birth_place: specificData?.birth_place,
+          birth_date: specificData?.birth_date, // Format ISO string akan dihandle oleh formatDateForInput di form
+          marital_status: specificData?.marital_status,
+          education: specificData?.education,
+          occupation: specificData?.occupation,
+        }),
+
+        // Data Spesifik Perusahaan
+        ...(type === "perusahaan" && {
+          company_type: specificData?.company_type,
+          registration_number: specificData?.registration_number,
+          established_at: specificData?.established_at,
+        }),
+      };
+
+      setForm(formData);
     }
   }, [detailData, isEdit, isDetail]);
 
-  const readonly = isDetail;
-  const isLoading = isCreating || isUpdating || isFetching;
-
   const handleSubmit = async () => {
     try {
-      if (!form.name || !form.email || !form.phone || !form.nik)
-        throw new Error("Nama, Email, Telepon, dan NIK wajib diisi");
-      if (!form.gender || !["M", "F"].includes(form.gender as string))
-        throw new Error("Gender wajib diisi (M/F)");
-      if (form.status === undefined || form.status === null)
-        throw new Error("Status wajib diisi");
-
-      if (isAdd) {
-        if (!form.password || form.password.trim().length < 8)
-          throw new Error("Password minimal 8 karakter");
-        if (form.password !== form.password_confirmation)
-          throw new Error("Konfirmasi password tidak cocok");
-      }
+      // Validasi sederhana sebelum kirim
+      if (!form.name || !form.email) throw new Error("Data wajib belum lengkap");
 
       const fd = new FormData();
-      fd.append("name", form.name as string);
-      fd.append("email", form.email as string);
-      fd.append("phone", form.phone as string);
+      
+      // -- Append Fields Umum --
+      fd.append("type", form.type);
+      fd.append("name", form.name ?? "");
+      fd.append("email", form.email ?? "");
+      fd.append("phone", form.phone ?? "");
       fd.append("address", form.address ?? "");
-      fd.append("gender", form.gender as string);
-      fd.append("birth_date", form.birth_date ?? "");
-      fd.append("birth_place", form.birth_place ?? "");
-      fd.append("nik", form.nik as string);
       fd.append("npwp", form.npwp ?? "");
       fd.append("status", String(form.status ?? 0));
-      fd.append("nip", form.nip ?? "");
-      fd.append("unit_kerja", form.unit_kerja ?? "");
-      fd.append("jabatan", form.jabatan ?? "");
 
+      // Password (hanya kirim jika diisi)
       if (form.password && form.password_confirmation) {
         fd.append("password", form.password);
         fd.append("password_confirmation", form.password_confirmation);
       }
 
-      const docs = (form.documents ?? []) as DocumentsAnggota[];
-      const docsToUpload = docs.filter(
-        (d) => d?.document instanceof File
-      ) as Array<DocumentsAnggota & { document: File }>;
+      // Append Spesifik Individu/Perusahaan
+      if (form.type === "individu") {
+        fd.append("nik", form.nik ?? "");
+        fd.append("gender", form.gender ?? "");
+        fd.append("birth_place", form.birth_place ?? "");
+        fd.append("birth_date", form.birth_date ?? "");
+        fd.append("marital_status", form.marital_status ?? "");
+        fd.append("education", form.education ?? "");
+        fd.append("occupation", form.occupation ?? "");
+      } else {
+        fd.append("company_type", form.company_type ?? "");
+        fd.append("registration_number", form.registration_number ?? "");
+        fd.append("established_at", form.established_at ?? "");
+      }
 
-      docsToUpload.forEach((d, i) => {
-        fd.append(`documents[${i}][key]`, d.key ?? "");
-        fd.append(`documents[${i}][file]`, d.document);
+      // -- Append Documents (PERBAIKAN DISINI) --
+      const docs = (form.documents ?? []) as DocumentsAnggota[];
+      
+      // Kita gunakan index manual (docIndex) agar urutan array documents di FormData 
+      // tetap rapi (0, 1, 2...) meskipun ada dokumen lama yang kita skip.
+      let docIndex = 0;
+
+      docs.forEach((d) => {
+        // LOGIC: Hanya kirim ke backend jika 'document' adalah File baru.
+        // Jika dokumen lama (d.document === null atau string), JANGAN kirim.
+        // Ini untuk menghindari error "file field is required".
+        
+        if (d.document instanceof File) {
+          fd.append(`documents[${docIndex}][key]`, d.key);
+          fd.append(`documents[${docIndex}][file]`, d.document);
+          
+          // Jika ini adalah replace file untuk dokumen yang sudah ada (punya ID)
+          // Kirim ID-nya agar backend tahu ini update, bukan create baru.
+          if (d.id) {
+             fd.append(`documents[${docIndex}][id]`, String(d.id));
+          }
+          
+          // Increment index hanya jika kita benar-benar append data
+          docIndex++;
+        }
       });
 
       if (isEdit && id) {
         await updateAnggota({ id, payload: fd }).unwrap();
-        Swal.fire("Sukses", "Anggota diperbarui", "success");
+        Swal.fire("Sukses", "Data berhasil diperbarui", "success");
       } else {
         await createAnggota(fd).unwrap();
-        Swal.fire("Sukses", "Anggota ditambahkan", "success");
+        Swal.fire("Sukses", "Data berhasil ditambahkan", "success");
       }
 
       router.push("/admin/anggota");
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan";
+    } catch (err: any) {
+      // Menampilkan pesan error detail dari backend jika ada
+      const msg = err?.data?.message || err.message || "Gagal menyimpan data";
+      // Jika ada error spesifik per field (seperti documents.0.file), tampilkan di console
+      if(err?.data?.errors) console.error("Validation Errors:", err.data.errors);
+      
       Swal.fire("Gagal", msg, "error");
-      console.error(err);
     }
   };
 
@@ -160,8 +204,8 @@ function AnggotaAddEditPageInner() {
         setForm={setForm}
         onCancel={() => router.back()}
         onSubmit={handleSubmit}
-        readonly={readonly}
-        isLoading={isLoading}
+        readonly={isDetail}
+        isLoading={isCreating || isUpdating || isFetching}
       />
     </div>
   );

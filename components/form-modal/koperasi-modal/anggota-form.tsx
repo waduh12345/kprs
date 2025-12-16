@@ -1,17 +1,47 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, Dispatch, SetStateAction } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type {
   AnggotaKoperasi,
   DocumentsAnggota,
 } from "@/types/koperasi-types/anggota";
 import { formatDateForInput } from "@/lib/format-utils";
+import { 
+  User, 
+  Building2, 
+  ShieldCheck, 
+  FileText, 
+  Trash2, 
+  Plus, 
+  AlertCircle 
+} from "lucide-react"; // Pastikan install lucide-react jika belum
 
-// helper dokumen kosong bertipe benar
+// --- Type Definition ---
+export type AnggotaFormState = Partial<AnggotaKoperasi> & {
+  password?: string;
+  password_confirmation?: string;
+  type: "individu" | "perusahaan";
+  marital_status?: string;
+  education?: string;
+  occupation?: string;
+  company_type?: string;
+  registration_number?: string;
+  established_at?: string;
+};
+
+// Helper document generator
 const makeEmptyDoc = (anggota_id = 0): DocumentsAnggota => ({
   id: 0,
   anggota_id,
@@ -23,23 +53,17 @@ const makeEmptyDoc = (anggota_id = 0): DocumentsAnggota => ({
 });
 
 interface AnggotaFormProps {
-  form: Partial<
-    AnggotaKoperasi & { password?: string; password_confirmation?: string }
-  >;
-  setForm: (
-    data: Partial<
-      AnggotaKoperasi & { password?: string; password_confirmation?: string }
-    >
-  ) => void;
+  form: AnggotaFormState;
+  setForm: Dispatch<SetStateAction<AnggotaFormState>>;
   onCancel: () => void;
-  onSubmit: () => void; // dipanggil HANYA jika valid
+  onSubmit: () => void;
   readonly?: boolean;
   isLoading?: boolean;
 }
 
 type MediaItem = DocumentsAnggota["media"][number];
 
-// ===== Helper Validasi =====
+// ===== Helpers Validasi =====
 const digitsOnly = (s: string) => s.replace(/\D+/g, "");
 const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 const isValidPassword = (s: string) =>
@@ -48,7 +72,6 @@ const isValidPhoneID = (s: string) => {
   const d = digitsOnly(s);
   return d.startsWith("08") && d.length >= 10 && d.length <= 14;
 };
-const normalizeNPWP = (s: string) => digitsOnly(s);
 const notFutureDate = (value?: string | null) => {
   if (!value) return true;
   const d = new Date(value);
@@ -59,26 +82,7 @@ const notFutureDate = (value?: string | null) => {
   return d.getTime() <= today.getTime();
 };
 
-type FieldErrors = Partial<
-  Record<
-    | "name"
-    | "email"
-    | "phone"
-    | "password"
-    | "password_confirmation"
-    | "gender"
-    | "birth_place"
-    | "birth_date"
-    | "nik"
-    | "npwp"
-    | "nip"
-    | "unit_kerja"
-    | "jabatan"
-    | "address"
-    | "status",
-    string
-  >
->;
+type FieldErrors = Partial<Record<keyof AnggotaFormState, string>>;
 
 export default function AnggotaForm({
   form,
@@ -90,189 +94,120 @@ export default function AnggotaForm({
 }: AnggotaFormProps) {
   const [mounted, setMounted] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [docErrors, setDocErrors] = useState<string[]>([]); // error per-index dokumen
+  const [docErrors, setDocErrors] = useState<string[]>([]);
 
   useEffect(() => setMounted(true), []);
 
-  // pastikan minimal 1 row documents
   useEffect(() => {
-    if (!form.documents || form.documents.length === 0) {
-      setForm({
-        ...form,
-        documents: [makeEmptyDoc(Number(form.id) || 0)],
-      });
-    }
+    setForm((prev) => ({
+      ...prev,
+      type: prev.type || "individu",
+      documents:
+        prev.documents && prev.documents.length > 0
+          ? prev.documents
+          : [makeEmptyDoc(Number(prev.id) || 0)],
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const statusOptions: Array<{ value: 0 | 1 | 2; label: string }> = [
-    { value: 0, label: "PENDING" },
-    { value: 1, label: "APPROVED" },
-    { value: 2, label: "REJECTED" },
+  const statusOptions = [
+    { value: 0, label: "Pengajuan", color: "text-yellow-600 bg-yellow-50 border-yellow-200" },
+    { value: 1, label: "Aktif", color: "text-green-600 bg-green-50 border-green-200" },
+    { value: 2, label: "Tidak Aktif", color: "text-red-600 bg-red-50 border-red-200" },
   ];
 
+  const educationOptions = [
+    "SD", "SMP", "SMA/SMK", "D3", "S1", "S2", "S3", "Lainnya"
+  ];
+
+  // --- Handlers ---
   const addDocRow = () => {
-    const docs = [...(form.documents ?? [])] as DocumentsAnggota[];
-    docs.push(makeEmptyDoc(Number(form.id) || 0));
-    setForm({ ...form, documents: docs });
+    setForm((prev) => ({
+      ...prev,
+      documents: [...(prev.documents || []), makeEmptyDoc(Number(prev.id) || 0)],
+    }));
   };
 
   const removeDocRow = (idx: number) => {
-    const docs = ((form.documents ?? []) as DocumentsAnggota[]).slice();
-    docs.splice(idx, 1);
-    setForm({
-      ...form,
-      documents: docs.length ? docs : [makeEmptyDoc(Number(form.id) || 0)],
+    setForm((prev) => {
+      const docs = [...(prev.documents || [])];
+      docs.splice(idx, 1);
+      return {
+        ...prev,
+        documents: docs.length ? docs : [makeEmptyDoc(Number(prev.id) || 0)],
+      };
     });
     setDocErrors((prev) => {
-      const cp = prev.slice();
+      const cp = [...prev];
       cp.splice(idx, 1);
       return cp;
     });
   };
 
-  const updateDocKey = (idx: number, key: string) => {
-    const docs = ((form.documents ?? []) as DocumentsAnggota[]).slice();
-    docs[idx] = { ...(docs[idx] as DocumentsAnggota), key };
-    setForm({ ...form, documents: docs });
+  const updateDoc = (idx: number, field: keyof DocumentsAnggota, value: any) => {
+    setForm((prev) => {
+      const docs = [...(prev.documents || [])] as DocumentsAnggota[];
+      docs[idx] = { ...docs[idx], [field]: value };
+      return { ...prev, documents: docs };
+    });
   };
 
-  const updateDocFile = (idx: number, file: File | null) => {
-    const docs = ((form.documents ?? []) as DocumentsAnggota[]).slice();
-    docs[idx] = { ...(docs[idx] as DocumentsAnggota), document: file };
-    setForm({ ...form, documents: docs });
+  const handleInputChange = (field: keyof AnggotaFormState, value: any) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+    if (fieldErrors[field]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
   };
 
   // ===== VALIDASI =====
   const validate = (): { fields: FieldErrors; docs: string[] } => {
     const errs: FieldErrors = {};
     const docErrs: string[] = [];
+    const isAddMode = !form.id;
 
-    const isAddMode = !form.id; // add: password wajib, edit: opsional
-
-    // Nama
-    if (!form.name || !form.name.trim()) {
-      errs.name = "Nama wajib diisi.";
-    } else if (form.name.trim().length < 3) {
-      errs.name = "Nama minimal 3 karakter.";
-    }
-
-    // Email
-    if (!form.email || !form.email.trim()) {
-      errs.email = "Email wajib diisi.";
-    } else if (!isValidEmail(form.email.trim())) {
+    if (!form.name?.trim()) errs.name = "Nama wajib diisi.";
+    if (!form.email || !isValidEmail(form.email.trim()))
       errs.email = "Format email tidak valid.";
-    }
+    if (!form.phone || !isValidPhoneID(String(form.phone)))
+      errs.phone = "No. Telepon harus valid (08..).";
+    if (!form.address || form.address.trim().length < 5)
+      errs.address = "Alamat wajib diisi lengkap.";
 
-    // Telepon
-    if (!form.phone || !String(form.phone).trim()) {
-      errs.phone = "Nomor telepon wajib diisi.";
-    } else if (!isValidPhoneID(String(form.phone))) {
-      errs.phone = "Nomor telepon harus 10–14 digit dan diawali 08.";
-    }
-
-    // Password
     if (isAddMode) {
-      // wajib saat tambah
-      if (!form.password) {
-        errs.password = "Password wajib diisi.";
-      } else if (!isValidPassword(form.password)) {
-        errs.password = "Minimal 8 karakter dan mengandung huruf serta angka.";
-      }
-
-      if (!form.password_confirmation) {
-        errs.password_confirmation = "Konfirmasi password wajib diisi.";
-      } else if (form.password_confirmation !== form.password) {
+      if (!form.password || !isValidPassword(form.password))
+        errs.password = "Min 8 karakter, huruf & angka.";
+      if (form.password !== form.password_confirmation)
         errs.password_confirmation = "Konfirmasi password tidak cocok.";
-      }
+    }
+
+    if (form.type === "individu") {
+      if (!form.nik || digitsOnly(String(form.nik)).length !== 16)
+        errs.nik = "NIK harus 16 digit angka.";
+      if (!form.gender) errs.gender = "Pilih jenis kelamin.";
+      if (!form.birth_place) errs.birth_place = "Tempat lahir wajib diisi.";
+      if (!form.birth_date || !notFutureDate(form.birth_date))
+        errs.birth_date = "Tanggal lahir tidak valid.";
     } else {
-      // opsional saat edit — jika diisi salah satu, terapkan aturan & wajib cocok
-      const filledAny =
-        (form.password && form.password.trim() !== "") ||
-        (form.password_confirmation &&
-          form.password_confirmation.trim() !== "");
-      if (filledAny) {
-        if (!form.password || !isValidPassword(form.password)) {
-          errs.password =
-            "Minimal 8 karakter dan mengandung huruf serta angka.";
-        }
-        if (!form.password_confirmation) {
-          errs.password_confirmation = "Konfirmasi password wajib diisi.";
-        } else if (form.password_confirmation !== form.password) {
-          errs.password_confirmation = "Konfirmasi password tidak cocok.";
-        }
-      }
+      if (!form.company_type) errs.company_type = "Pilih jenis badan usaha.";
+      if (!form.registration_number)
+        errs.registration_number = "Nomor Registrasi/SIUP wajib diisi.";
     }
 
-    // Gender (opsional) – jika diisi harus M/F
-    if (form.gender && !["M", "F"].includes(form.gender)) {
-      errs.gender = "Gender tidak valid.";
-    }
-
-    // Tempat lahir (opsional)
-    if (form.birth_place && form.birth_place.trim().length < 2) {
-      errs.birth_place = "Tempat lahir minimal 2 karakter.";
-    }
-
-    // Tanggal lahir (opsional, tidak boleh di masa depan)
-    if (form.birth_date) {
-      if (!notFutureDate(String(form.birth_date))) {
-        errs.birth_date = "Tanggal lahir tidak boleh di masa depan.";
-      }
-    }
-
-    // NIK (opsional tapi jika diisi 16 digit)
-    if (form.nik) {
-      const nikDigits = digitsOnly(String(form.nik));
-      if (nikDigits.length !== 16) errs.nik = "NIK (KTP) harus 16 digit.";
-    }
-
-    // NPWP (opsional tapi jika diisi 15 digit setelah normalisasi)
-    if (form.npwp) {
-      const npwpDigits = normalizeNPWP(String(form.npwp));
-      if (npwpDigits.length !== 15)
-        errs.npwp = "NPWP harus 15 digit (tanpa tanda baca).";
-    }
-
-    // NIP (opsional 8–20 digit)
-    if (form.nip) {
-      const nipDigits = digitsOnly(String(form.nip));
-      if (nipDigits.length < 8 || nipDigits.length > 20) {
-        errs.nip = "NIP harus 8–20 digit.";
-      }
-    }
-
-    // Unit kerja / jabatan (opsional)
-    if (form.unit_kerja && form.unit_kerja.trim().length < 2) {
-      errs.unit_kerja = "Unit kerja minimal 2 karakter.";
-    }
-    if (form.jabatan && form.jabatan.trim().length < 2) {
-      errs.jabatan = "Jabatan minimal 2 karakter.";
-    }
-
-    // Alamat (opsional)
-    if (form.address && form.address.trim().length < 10) {
-      errs.address = "Alamat minimal 10 karakter.";
-    }
-
-    // Dokumen: jika ada file, key wajib
     const docs = (form.documents ?? []) as DocumentsAnggota[];
-    for (let i = 0; i < docs.length; i++) {
-      const d = docs[i];
-      if (d?.document && !d?.key) {
-        docErrs[i] = "Nama file wajib diisi saat memilih file.";
+    docs.forEach((d, i) => {
+      if (d.document && !d.key) {
+        docErrs[i] = "Nama dokumen wajib diisi jika ada file.";
       } else {
         docErrs[i] = "";
       }
-    }
+    });
 
     return { fields: errs, docs: docErrs };
   };
-
-  const hasErrors = useMemo(
-    () => Object.keys(fieldErrors).length > 0 || docErrors.some(Boolean),
-    [fieldErrors, docErrors]
-  );
 
   const handleSave = () => {
     const { fields, docs } = validate();
@@ -280,421 +215,451 @@ export default function AnggotaForm({
     setDocErrors(docs);
 
     if (Object.keys(fields).length === 0 && !docs.some(Boolean)) {
-      onSubmit(); // valid
+      onSubmit();
     }
   };
 
-  if (!mounted) {
-    return (
-      <div className="bg-white dark:bg-zinc-900 rounded-lg w-full max-h-[90vh] flex flex-col">
-        <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-zinc-700 flex-shrink-0">
-          <h2 className="text-lg font-semibold">Loading...</h2>
-          <Button variant="ghost" onClick={onCancel}>
-            ✕
-          </Button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="animate-pulse">
-            <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2 mb-4"></div>
-            <div className="h-4 bg-gray-200 rounded w-5/6"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (!mounted) return <div className="p-8 flex justify-center text-gray-500">Memuat Formulir...</div>;
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-lg w-full  max-h-[90vh] flex flex-col">
+    <div className="bg-white dark:bg-zinc-950 w-full max-w-5xl mx-auto flex flex-col h-full md:h-auto">
       {/* Header */}
-      <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-zinc-700 flex-shrink-0">
-        <h2 className="text-lg font-semibold">
-          {readonly
-            ? "Detail Anggota"
-            : form.id
-            ? "Edit Anggota"
-            : "Tambah Anggota"}
-        </h2>
-        <Button variant="ghost" onClick={onCancel}>
+      <div className="flex justify-between items-center px-6 py-5 border-b border-gray-100 dark:border-zinc-800 sticky top-0 bg-white dark:bg-zinc-950 z-10">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+            {readonly ? "Detail Anggota" : form.id ? "Edit Anggota" : "Registrasi Anggota"}
+          </h2>
+          <p className="text-sm text-gray-500 mt-1">
+            {readonly ? "Informasi lengkap data anggota." : "Lengkapi formulir di bawah ini dengan data yang valid."}
+          </p>
+        </div>
+        <Button variant="ghost" size="icon" onClick={onCancel} className="text-gray-400 hover:text-gray-700">
           ✕
         </Button>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Nama */}
-          <div className="flex flex-col gap-y-1">
-            <Label>Nama</Label>
-            <Input
-              value={form.name ?? ""}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              readOnly={readonly}
-              aria-invalid={!!fieldErrors.name}
-            />
-            {!readonly && fieldErrors.name && (
-              <p className="text-xs text-red-600">{fieldErrors.name}</p>
-            )}
-          </div>
-
-          {/* Email */}
-          <div className="flex flex-col gap-y-1">
-            <Label>Email</Label>
-            <Input
-              type="email"
-              value={form.email ?? ""}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              readOnly={readonly}
-              aria-invalid={!!fieldErrors.email}
-            />
-            {!readonly && fieldErrors.email && (
-              <p className="text-xs text-red-600">{fieldErrors.email}</p>
-            )}
-          </div>
-
-          {/* Phone */}
-          <div className="flex flex-col gap-y-1">
-            <Label>Telepon</Label>
-            <Input
-              value={form.phone ?? ""}
-              onChange={(e) =>
-                setForm({ ...form, phone: digitsOnly(e.target.value) })
-              }
-              readOnly={readonly}
-              aria-invalid={!!fieldErrors.phone}
-              inputMode="numeric"
-              placeholder="08xxxxxxxxxx"
-            />
-            {!readonly && fieldErrors.phone && (
-              <p className="text-xs text-red-600">{fieldErrors.phone}</p>
-            )}
-          </div>
-
-          {/* Password (wajib saat tambah, opsional saat edit) */}
-          {!readonly && (
-            <>
-              <div className="flex flex-col gap-y-1">
-                <Label>
-                  {form.id ? "Password Baru (opsional)" : "Password (wajib)"}
-                </Label>
-                <Input
-                  type="password"
-                  value={form.password ?? ""}
-                  onChange={(e) =>
-                    setForm({ ...form, password: e.target.value })
-                  }
-                  aria-invalid={!!fieldErrors.password}
-                  placeholder={
-                    form.id
-                      ? "Kosongkan jika tidak ingin mengganti"
-                      : "Minimal 8 karakter, ada huruf & angka"
-                  }
-                />
-                {fieldErrors.password && (
-                  <p className="text-xs text-red-600">{fieldErrors.password}</p>
-                )}
-              </div>
-              <div className="flex flex-col gap-y-1">
-                <Label>
-                  {form.id ? "Konfirmasi Password Baru" : "Konfirmasi Password"}
-                </Label>
-                <Input
-                  type="password"
-                  value={form.password_confirmation ?? ""}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      password_confirmation: e.target.value,
-                    })
-                  }
-                  aria-invalid={!!fieldErrors.password_confirmation}
-                  placeholder={
-                    form.id
-                      ? "Wajib jika mengisi password baru"
-                      : "Ulangi password"
-                  }
-                />
-                {fieldErrors.password_confirmation && (
-                  <p className="text-xs text-red-600">
-                    {fieldErrors.password_confirmation}
-                  </p>
-                )}
-              </div>
-            </>
-          )}
-
-          {/* Gender */}
-          <div className="flex flex-col gap-y-1">
-            <Label>Gender</Label>
-            <select
-              className="border rounded-md px-3 py-2 text-sm bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-600"
-              value={form.gender ?? ""}
-              onChange={(e) =>
-                setForm({ ...form, gender: e.target.value as "M" | "F" })
-              }
-              disabled={readonly}
-              aria-invalid={!!fieldErrors.gender}
+      <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8">
+        <form onSubmit={(e) => e.preventDefault()}>
+          
+          {/* Tipe Keanggotaan */}
+          <section>
+            <Label className="text-base font-semibold mb-3 block text-gray-800 dark:text-gray-200">Tipe Keanggotaan</Label>
+            <RadioGroup
+              disabled={readonly || !!form.id}
+              value={form.type}
+              onValueChange={(val) => handleInputChange("type", val as "individu" | "perusahaan")}
+              className="grid grid-cols-1 sm:grid-cols-2 gap-4"
             >
-              <option value="">Pilih Gender</option>
-              <option value="M">Male (M)</option>
-              <option value="F">Female (F)</option>
-            </select>
-            {!readonly && fieldErrors.gender && (
-              <p className="text-xs text-red-600">{fieldErrors.gender}</p>
-            )}
-          </div>
-
-          {/* Tempat/Tanggal Lahir */}
-          <div className="flex flex-col gap-y-1">
-            <Label>Tempat Lahir</Label>
-            <Input
-              value={form.birth_place ?? ""}
-              onChange={(e) =>
-                setForm({ ...form, birth_place: e.target.value })
-              }
-              readOnly={readonly}
-              aria-invalid={!!fieldErrors.birth_place}
-            />
-            {!readonly && fieldErrors.birth_place && (
-              <p className="text-xs text-red-600">{fieldErrors.birth_place}</p>
-            )}
-          </div>
-          <div className="flex flex-col gap-y-1">
-            <Label>Tanggal Lahir</Label>
-            <Input
-              type="date"
-              value={formatDateForInput(form.birth_date) ?? ""}
-              onChange={(e) => setForm({ ...form, birth_date: e.target.value })}
-              readOnly={readonly}
-              aria-invalid={!!fieldErrors.birth_date}
-            />
-            {!readonly && fieldErrors.birth_date && (
-              <p className="text-xs text-red-600">{fieldErrors.birth_date}</p>
-            )}
-          </div>
-
-          {/* NIK / NPWP */}
-          <div className="flex flex-col gap-y-1">
-            <Label>NIK</Label>
-            <Input
-              value={form.nik ?? ""}
-              onChange={(e) =>
-                setForm({ ...form, nik: digitsOnly(e.target.value) })
-              }
-              readOnly={readonly}
-              inputMode="numeric"
-              placeholder="16 digit"
-              aria-invalid={!!fieldErrors.nik}
-            />
-            {!readonly && fieldErrors.nik && (
-              <p className="text-xs text-red-600">{fieldErrors.nik}</p>
-            )}
-          </div>
-          <div className="flex flex-col gap-y-1">
-            <Label>NPWP</Label>
-            <Input
-              value={form.npwp ?? ""}
-              onChange={(e) => setForm({ ...form, npwp: e.target.value })}
-              readOnly={readonly}
-              placeholder="15 digit (boleh pakai titik/garis)"
-              aria-invalid={!!fieldErrors.npwp}
-            />
-            {!readonly && fieldErrors.npwp && (
-              <p className="text-xs text-red-600">{fieldErrors.npwp}</p>
-            )}
-          </div>
-
-          {/* NIP / Unit Kerja / Jabatan */}
-          <div className="flex flex-col gap-y-1">
-            <Label>NIP</Label>
-            <Input
-              value={form.nip ?? ""}
-              onChange={(e) =>
-                setForm({ ...form, nip: digitsOnly(e.target.value) })
-              }
-              readOnly={readonly}
-              inputMode="numeric"
-              placeholder="8–20 digit"
-              aria-invalid={!!fieldErrors.nip}
-            />
-            {!readonly && fieldErrors.nip && (
-              <p className="text-xs text-red-600">{fieldErrors.nip}</p>
-            )}
-          </div>
-          <div className="flex flex-col gap-y-1">
-            <Label>Unit Kerja</Label>
-            <Input
-              value={form.unit_kerja ?? ""}
-              onChange={(e) => setForm({ ...form, unit_kerja: e.target.value })}
-              readOnly={readonly}
-              aria-invalid={!!fieldErrors.unit_kerja}
-            />
-            {!readonly && fieldErrors.unit_kerja && (
-              <p className="text-xs text-red-600">{fieldErrors.unit_kerja}</p>
-            )}
-          </div>
-          <div className="flex flex-col gap-y-1">
-            <Label>Jabatan</Label>
-            <Input
-              value={form.jabatan ?? ""}
-              onChange={(e) => setForm({ ...form, jabatan: e.target.value })}
-              readOnly={readonly}
-              aria-invalid={!!fieldErrors.jabatan}
-            />
-            {!readonly && fieldErrors.jabatan && (
-              <p className="text-xs text-red-600">{fieldErrors.jabatan}</p>
-            )}
-          </div>
-
-          {/* Alamat (full) */}
-          <div className="flex flex-col gap-y-1">
-            <Label>Alamat</Label>
-            <Textarea
-              value={form.address ?? ""}
-              onChange={(e) => setForm({ ...form, address: e.target.value })}
-              readOnly={readonly}
-              aria-invalid={!!fieldErrors.address}
-            />
-            {!readonly && fieldErrors.address && (
-              <p className="text-xs text-red-600">{fieldErrors.address}</p>
-            )}
-          </div>
-
-          {/* Status */}
-          <div className="flex flex-col gap-y-1 sm:col-span-2">
-            <Label>Status</Label>
-            <select
-              className="border rounded-md px-3 py-2 text-sm bg-white dark:bg-zinc-800 border-gray-300 dark:border-zinc-600"
-              value={
-                form.status !== undefined && form.status !== null
-                  ? String(form.status)
-                  : ""
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  status: Number(e.target.value) as 0 | 1 | 2,
-                })
-              }
-              disabled={readonly}
-              aria-invalid={!!fieldErrors.status}
-            >
-              <option value="">Pilih Status</option>
-              {statusOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            {!readonly && fieldErrors.status && (
-              <p className="text-xs text-red-600">{fieldErrors.status}</p>
-            )}
-          </div>
-        </div>
-
-        {/* ===== Dokumen Dinamis ===== */}
-        <div className="mt-6 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold">Dokumen</h3>
-            {!readonly && (
-              <Button size="sm" onClick={addDocRow}>
-                + Tambah Baris
-              </Button>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            {(form.documents as DocumentsAnggota[] | undefined)?.map(
-              (doc, idx) => {
-                // hindari akses properti yang tidak ada di tipe (mis. 'url')
-                const firstMedia: MediaItem | undefined = doc.media?.[0];
-                const existingUrl = firstMedia?.original_url ?? "";
-                const docErrMsg = docErrors[idx];
-
-                return (
-                  <div
-                    key={idx}
-                    className="grid grid-cols-1 sm:grid-cols-12 gap-3 border rounded-lg p-3"
+              {[
+                { id: "individu", label: "Individu / Perorangan", icon: User, desc: "Untuk anggota pribadi." },
+                { id: "perusahaan", label: "Badan Usaha", icon: Building2, desc: "Untuk PT, CV, atau Koperasi." }
+              ].map((item) => (
+                <div key={item.id}>
+                  <RadioGroupItem value={item.id} id={item.id} className="peer sr-only" />
+                  <Label
+                    htmlFor={item.id}
+                    className={`flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all hover:bg-gray-50 dark:hover:bg-zinc-900
+                      ${form.type === item.id 
+                        ? "border-blue-600 bg-blue-50/50 dark:bg-blue-900/10 dark:border-blue-500 ring-1 ring-blue-600" 
+                        : "border-gray-200 dark:border-zinc-800"
+                      }
+                      ${readonly || !!form.id ? "opacity-70 cursor-not-allowed" : ""}
+                    `}
                   >
-                    {/* Nama File (key) */}
-                    <div className="sm:col-span-5">
-                      <Label>Nama File</Label>
-                      <Input
-                        value={doc.key ?? ""}
-                        readOnly={readonly}
-                        onChange={(e) => updateDocKey(idx, e.target.value)}
-                        aria-invalid={!!docErrMsg}
-                      />
-                      {!readonly && docErrMsg && (
-                        <p className="text-xs text-red-600 mt-1">{docErrMsg}</p>
-                      )}
+                    <div className={`p-2 rounded-lg ${form.type === item.id ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-500"}`}>
+                      <item.icon size={20} />
                     </div>
+                    <div>
+                      <span className="font-semibold block text-base">{item.label}</span>
+                      <span className="text-sm text-gray-500 font-normal">{item.desc}</span>
+                    </div>
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
+          </section>
 
-                    {/* File */}
-                    <div className="sm:col-span-5">
-                      <Label>File</Label>
-                      <Input
-                        type="file"
-                        disabled={readonly}
-                        onChange={(e) =>
-                          updateDocFile(idx, e.target.files?.[0] || null)
-                        }
-                      />
-                      {existingUrl && (
-                        <a
-                          className="text-xs text-blue-600 mt-1 inline-block"
-                          href={existingUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Lihat file lama
-                        </a>
-                      )}
-                      {doc.document && doc.document instanceof File && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          File baru: {doc.document.name}
-                        </p>
-                      )}
-                    </div>
+          <div className="border-t border-gray-100 dark:border-zinc-800 my-6"></div>
 
-                    {/* Hapus */}
-                    <div className="sm:col-span-2 flex items-end">
-                      {!readonly && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => removeDocRow(idx)}
-                        >
-                          Hapus
-                        </Button>
-                      )}
-                    </div>
+          {/* Informasi Dasar */}
+          <section className="space-y-6">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <span className="w-1 h-6 bg-blue-600 rounded-full inline-block"></span>
+              Informasi Kontak & Alamat
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label>
+                  {form.type === "perusahaan" ? "Nama Perusahaan" : "Nama Lengkap"} <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  value={form.name ?? ""}
+                  onChange={(e) => handleInputChange("name", e.target.value)}
+                  readOnly={readonly}
+                  className={fieldErrors.name ? "border-red-500 focus-visible:ring-red-500" : ""}
+                  placeholder="Masukkan nama lengkap"
+                />
+                {fieldErrors.name && <p className="text-xs text-red-500 mt-1">{fieldErrors.name}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Email <span className="text-red-500">*</span></Label>
+                <Input
+                  type="email"
+                  value={form.email ?? ""}
+                  onChange={(e) => handleInputChange("email", e.target.value)}
+                  readOnly={readonly}
+                  className={fieldErrors.email ? "border-red-500 focus-visible:ring-red-500" : ""}
+                  placeholder="contoh@email.com"
+                />
+                {fieldErrors.email && <p className="text-xs text-red-500 mt-1">{fieldErrors.email}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>No. Telepon / WhatsApp <span className="text-red-500">*</span></Label>
+                <Input
+                  value={form.phone ?? ""}
+                  onChange={(e) => handleInputChange("phone", digitsOnly(e.target.value))}
+                  readOnly={readonly}
+                  placeholder="08..."
+                  className={fieldErrors.phone ? "border-red-500 focus-visible:ring-red-500" : ""}
+                />
+                {fieldErrors.phone && <p className="text-xs text-red-500 mt-1">{fieldErrors.phone}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label>NPWP</Label>
+                <Input
+                  value={form.npwp ?? ""}
+                  onChange={(e) => handleInputChange("npwp", e.target.value)}
+                  readOnly={readonly}
+                  placeholder="Nomor Pokok Wajib Pajak"
+                />
+              </div>
+
+              <div className="md:col-span-2 space-y-2">
+                <Label>Alamat Lengkap <span className="text-red-500">*</span></Label>
+                <Textarea
+                  value={form.address ?? ""}
+                  onChange={(e) => handleInputChange("address", e.target.value)}
+                  readOnly={readonly}
+                  className={`min-h-[80px] resize-none ${fieldErrors.address ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                  placeholder="Jalan, RT/RW, Kelurahan, Kecamatan..."
+                />
+                {fieldErrors.address && <p className="text-xs text-red-500 mt-1">{fieldErrors.address}</p>}
+              </div>
+            </div>
+          </section>
+
+          <div className="border-t border-gray-100 dark:border-zinc-800 my-8"></div>
+
+          {/* Kondisional: Data Spesifik */}
+          <section className="space-y-6">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <span className="w-1 h-6 bg-purple-600 rounded-full inline-block"></span>
+              {form.type === "individu" ? "Data Pribadi" : "Legalitas Perusahaan"}
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {form.type === "individu" ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>NIK (KTP) <span className="text-red-500">*</span></Label>
+                    <Input
+                      value={form.nik ?? ""}
+                      onChange={(e) => handleInputChange("nik", digitsOnly(e.target.value))}
+                      readOnly={readonly}
+                      maxLength={16}
+                      className={fieldErrors.nik ? "border-red-500" : ""}
+                      placeholder="16 Digit Angka"
+                    />
+                    {fieldErrors.nik && <p className="text-xs text-red-500 mt-1">{fieldErrors.nik}</p>}
                   </div>
-                );
-              }
+
+                  <div className="space-y-2">
+                    <Label>Jenis Kelamin <span className="text-red-500">*</span></Label>
+                    <Select disabled={readonly} value={form.gender ?? ""} onValueChange={(val) => handleInputChange("gender", val)}>
+                      <SelectTrigger className={`w-full ${fieldErrors.gender ? "border-red-500" : ""}`}>
+                        <SelectValue placeholder="Pilih Gender" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="M">Laki-laki</SelectItem>
+                        <SelectItem value="F">Perempuan</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {fieldErrors.gender && <p className="text-xs text-red-500 mt-1">{fieldErrors.gender}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Tempat Lahir <span className="text-red-500">*</span></Label>
+                    <Input
+                      value={form.birth_place ?? ""}
+                      onChange={(e) => handleInputChange("birth_place", e.target.value)}
+                      readOnly={readonly}
+                      className={fieldErrors.birth_place ? "border-red-500" : ""}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Tanggal Lahir <span className="text-red-500">*</span></Label>
+                    <Input
+                      type="date"
+                      value={formatDateForInput(form.birth_date) ?? ""}
+                      onChange={(e) => handleInputChange("birth_date", e.target.value)}
+                      readOnly={readonly}
+                      className={fieldErrors.birth_date ? "border-red-500" : ""}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Status Pernikahan</Label>
+                    <Select disabled={readonly} value={form.marital_status ?? ""} onValueChange={(val) => handleInputChange("marital_status", val)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Pilih Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="single">Belum Menikah</SelectItem>
+                        <SelectItem value="married">Menikah</SelectItem>
+                        <SelectItem value="divorced">Cerai</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Pendidikan Terakhir</Label>
+                    <Select disabled={readonly} value={form.education ?? ""} onValueChange={(val) => handleInputChange("education", val)}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Pilih Pendidikan" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {educationOptions.map((edu) => (
+                          <SelectItem key={edu} value={edu}>{edu}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="md:col-span-2 space-y-2">
+                    <Label>Pekerjaan Saat Ini</Label>
+                    <Input
+                      value={form.occupation ?? ""}
+                      onChange={(e) => handleInputChange("occupation", e.target.value)}
+                      readOnly={readonly}
+                      placeholder="Contoh: Karyawan Swasta, Wiraswasta, PNS"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>Bentuk Usaha <span className="text-red-500">*</span></Label>
+                    <Select disabled={readonly} value={form.company_type ?? ""} onValueChange={(val) => handleInputChange("company_type", val)}>
+                      <SelectTrigger className={`w-full ${fieldErrors.company_type ? "border-red-500" : ""}`}>
+                        <SelectValue placeholder="Pilih Bentuk Usaha" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PT">PT (Perseroan Terbatas)</SelectItem>
+                        <SelectItem value="CV">CV (Komanditer)</SelectItem>
+                        <SelectItem value="UD">UD (Usaha Dagang)</SelectItem>
+                        <SelectItem value="Yayasan">Yayasan</SelectItem>
+                        <SelectItem value="Koperasi">Koperasi</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {fieldErrors.company_type && <p className="text-xs text-red-500 mt-1">{fieldErrors.company_type}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>No. Registrasi / SIUP <span className="text-red-500">*</span></Label>
+                    <Input
+                      value={form.registration_number ?? ""}
+                      onChange={(e) => handleInputChange("registration_number", e.target.value)}
+                      readOnly={readonly}
+                      className={fieldErrors.registration_number ? "border-red-500" : ""}
+                      placeholder="Nomor Izin Usaha / NIB"
+                    />
+                    {fieldErrors.registration_number && <p className="text-xs text-red-500 mt-1">{fieldErrors.registration_number}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Tanggal Berdiri</Label>
+                    <Input
+                      type="date"
+                      value={formatDateForInput(form.established_at) ?? ""}
+                      onChange={(e) => handleInputChange("established_at", e.target.value)}
+                      readOnly={readonly}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+
+          {/* Keamanan & Status (Jika tidak readonly & mode Add, atau edit status) */}
+          <div className="border-t border-gray-100 dark:border-zinc-800 my-8"></div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Password Section */}
+            {!readonly && !form.id && (
+              <section className="space-y-6">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <span className="w-1 h-6 bg-red-500 rounded-full inline-block"></span>
+                  Keamanan Akun
+                </h3>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Password <span className="text-red-500">*</span></Label>
+                    <Input
+                      type="password"
+                      value={form.password ?? ""}
+                      onChange={(e) => handleInputChange("password", e.target.value)}
+                      className={fieldErrors.password ? "border-red-500" : ""}
+                    />
+                    {fieldErrors.password && <p className="text-xs text-red-500 mt-1">{fieldErrors.password}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Konfirmasi Password <span className="text-red-500">*</span></Label>
+                    <Input
+                      type="password"
+                      value={form.password_confirmation ?? ""}
+                      onChange={(e) => handleInputChange("password_confirmation", e.target.value)}
+                      className={fieldErrors.password_confirmation ? "border-red-500" : ""}
+                    />
+                    {fieldErrors.password_confirmation && <p className="text-xs text-red-500 mt-1">{fieldErrors.password_confirmation}</p>}
+                  </div>
+                </div>
+              </section>
             )}
+
+            {/* Status Section */}
+            <section className="space-y-6">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <span className="w-1 h-6 bg-orange-500 rounded-full inline-block"></span>
+                Status Keanggotaan
+              </h3>
+              <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 dark:bg-zinc-900 space-y-3">
+                 <Label>Pilih Status:</Label>
+                 <Select
+                    disabled={readonly}
+                    value={String(form.status ?? 0)}
+                    onValueChange={(val) => handleInputChange("status", Number(val) as 0 | 1 | 2)}
+                  >
+                    <SelectTrigger className="w-full bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={String(opt.value)}>
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${opt.value === 1 ? "bg-green-500" : opt.value === 2 ? "bg-red-500" : "bg-yellow-500"}`}></span>
+                            {opt.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-400">
+                    Status menentukan akses anggota ke layanan koperasi.
+                  </p>
+              </div>
+            </section>
           </div>
 
-          {/* Ringkasan error umum jika ada */}
-          {!readonly && hasErrors && (
-            <div className="mt-2 text-xs text-red-600">
-              Periksa kembali isian yang bertanda merah.
+          <div className="border-t border-gray-100 dark:border-zinc-800 my-8"></div>
+
+          {/* Dokumen Section */}
+          <section className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <span className="w-1 h-6 bg-teal-500 rounded-full inline-block"></span>
+                Dokumen Pendukung
+              </h3>
+              {!readonly && (
+                <Button type="button" size="sm" onClick={addDocRow} className="gap-2">
+                  <Plus size={16} /> Tambah File
+                </Button>
+              )}
             </div>
-          )}
-        </div>
+            
+            <div className="grid gap-4">
+              {(form.documents as DocumentsAnggota[] | undefined)?.map((doc, idx) => {
+                  const firstMedia = doc.media?.[0];
+                  const existingUrl = firstMedia?.original_url ?? "";
+                  const docErrMsg = docErrors[idx];
+
+                  return (
+                    <div key={idx} className="relative group border rounded-xl p-4 transition-all hover:shadow-md bg-white dark:bg-zinc-900">
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+                        <div className="md:col-span-5 space-y-2">
+                          <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Dokumen</Label>
+                          <div className="relative">
+                            <FileText size={16} className="absolute left-3 top-3 text-gray-400" />
+                            <Input
+                              value={doc.key ?? ""}
+                              readOnly={readonly}
+                              onChange={(e) => updateDoc(idx, "key", e.target.value)}
+                              className={`pl-9 ${docErrMsg ? "border-red-500" : ""}`}
+                              placeholder="Contoh: KTP, KK, SIUP"
+                            />
+                          </div>
+                          {docErrMsg && <p className="text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12}/> {docErrMsg}</p>}
+                        </div>
+
+                        <div className="md:col-span-6 space-y-2">
+                          <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider">File Upload</Label>
+                          <Input
+                            type="file"
+                            disabled={readonly}
+                            onChange={(e) => updateDoc(idx, "document", e.target.files?.[0] || null)}
+                            className="file:bg-blue-50 file:text-blue-600 file:border-0 file:rounded-md file:px-3 file:py-1 file:mr-3 file:text-sm hover:file:bg-blue-100 transition-colors"
+                          />
+                          {existingUrl && (
+                            <a href={existingUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1 mt-1">
+                              <FileText size={12} /> Lihat file tersimpan
+                            </a>
+                          )}
+                        </div>
+
+                        {!readonly && (
+                          <div className="md:col-span-1 flex justify-end pt-6">
+                             <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeDocRow(idx)}
+                              className="text-gray-400 hover:text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 size={18} />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+              })}
+            </div>
+            {(form.documents?.length === 0) && (
+              <div className="text-center py-8 border-2 border-dashed rounded-xl text-gray-400 bg-gray-50/50">
+                 Belum ada dokumen yang dilampirkan.
+              </div>
+            )}
+          </section>
+
+        </form>
       </div>
 
-      {/* Footer */}
-      {!readonly && (
-        <div className="p-6 border-t border-gray-200 dark:border-zinc-700 flex justify-end gap-2 flex-shrink-0">
-          <Button variant="outline" onClick={onCancel}>
-            Batal
+      {/* Footer / Sticky Action Bar */}
+      <div className="p-6 border-t border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-950 flex justify-end items-center gap-3">
+        <Button variant="outline" onClick={onCancel} disabled={isLoading} className="px-6">
+          Batal
+        </Button>
+        {!readonly && (
+          <Button onClick={handleSave} disabled={isLoading} className="px-6 bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-200 dark:shadow-none">
+            {isLoading ? "Menyimpan..." : (form.id ? "Simpan Perubahan" : "Simpan Data")}
           </Button>
-          <Button onClick={handleSave} disabled={isLoading}>
-            {isLoading ? "Menyimpan..." : "Simpan"}
-          </Button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

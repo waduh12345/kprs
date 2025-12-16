@@ -9,6 +9,7 @@ import {
   Settings,
   GitBranch,
   Clock,
+  Users2,
 } from "lucide-react";
 import Header from "@/components/admin-components/header";
 import Sidebar from "@/components/admin-components/sidebar";
@@ -232,6 +233,24 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
               href: "/admin/pembiayaan/laporan/performance",
             },
           ]
+        },
+      ],
+    },
+    {
+      id: "sales",
+      label: "Sales",
+      icon: <Users2 className="h-5 w-5" />,
+      href: "#",
+      children: [
+        {
+          id: "sales-category",
+          label: "Kategori Sales",
+          href: "/admin/sales/kategori",
+        },
+        {
+          id: "sales-data",
+          label: "Data Sales",
+          href: "/admin/sales/data",
         },
       ],
     },
