@@ -20,7 +20,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { HistoryIcon, LandmarkIcon } from "lucide-react";
+import { HistoryIcon, LandmarkIcon, Download } from "lucide-react";
 
 export default function AnggotaPage() {
   const router = useRouter();
@@ -28,7 +28,12 @@ export default function AnggotaPage() {
   const itemsPerPage = 10;
   const [currentPage, setCurrentPage] = useState(1);
   const [query, setQuery] = useState("");
+
+  // State untuk filter status
   const [status, setStatus] = useState<"all" | "0" | "1" | "2">("all");
+
+  // State baru untuk filter tipe (Frontend Logic)
+  const [typeFilter, setTypeFilter] = useState<string>("all");
 
   const { data, isLoading, refetch } = useGetAnggotaListQuery(
     {
@@ -36,18 +41,31 @@ export default function AnggotaPage() {
       paginate: itemsPerPage,
     },
     {
-      refetchOnMountOrArgChange: true, // ⬅️ refetch saat halaman dimount kembali
-      refetchOnFocus: true, // ⬅️ bonus: refetch saat tab kembali fokus
-      refetchOnReconnect: true, // ⬅️ bonus: refetch saat jaringan balik
+      refetchOnMountOrArgChange: true,
+      refetchOnFocus: true,
+      refetchOnReconnect: true,
     }
   );
 
   const list = useMemo(() => data?.data ?? [], [data]);
 
+  // === LOGIC FILTER FRONTEND DISINI ===
   const filteredList = useMemo(() => {
     let arr = list;
-    if (status !== "all")
+
+    // 1. Filter by Status
+    if (status !== "all") {
       arr = arr.filter((it) => it.status === Number(status));
+    }
+
+    // 2. Filter by Type (Logic Baru)
+    if (typeFilter !== "all") {
+      arr = arr.filter(
+        (it) => it.type?.toLowerCase() === typeFilter.toLowerCase()
+      );
+    }
+
+    // 3. Filter by Search Query
     if (!query.trim()) return arr;
     const q = query.toLowerCase();
     return arr.filter((it) =>
@@ -55,7 +73,7 @@ export default function AnggotaPage() {
         (f) => f?.toLowerCase?.().includes?.(q)
       )
     );
-  }, [list, query, status]);
+  }, [list, query, status, typeFilter]);
 
   const lastPage = useMemo(() => data?.last_page ?? 1, [data]);
 
@@ -250,6 +268,7 @@ export default function AnggotaPage() {
         showTemplateCsvButton
         openModal={() => router.push("/admin/anggota/add-data?mode=add")}
         onSearchChange={(q: string) => setQuery(q)}
+        // --- Status Filter ---
         enableStatusFilter
         statusOptions={[
           { value: "all", label: "Semua Status" },
@@ -259,14 +278,33 @@ export default function AnggotaPage() {
         ]}
         initialStatus={status}
         onStatusChange={(s: string) => setStatus(s as "all" | "0" | "1" | "2")}
+        // --- Type Filter (Extra Select) ---
+        extraSelects={[
+          {
+            id: "filter_type",
+            label: "Tipe Anggota",
+            value: typeFilter,
+            options: [
+              { value: "all", label: "Semua Tipe" },
+              { value: "individu", label: "Individu" },
+              { value: "perusahaan", label: "Perusahaan" },
+            ],
+            onChange: (val) => setTypeFilter(val),
+          },
+        ]}
+        // --- Konfigurasi Import ---
+        enableImport={true}
         onImportExcel={(file) => {
           if (!isImporting) void handleImportExcel(file);
         }}
+        importLabel={isImporting ? "Mengunggah..." : "Import Excel"}
+        // --- Konfigurasi Export ---
+        enableExport={true}
         onExportExcel={() => {
           if (!isExporting) void handleExportExcel();
         }}
-        importLabel={isImporting ? "Mengunggah..." : "Import Excel"}
         exportLabel={isExporting ? "Memproses..." : "Export Excel"}
+        exportIcon={<Download className="mr-2 size-4" />}
       />
 
       <Card>
@@ -361,16 +399,16 @@ export default function AnggotaPage() {
                     <td className="px-4 py-2 whitespace-nowrap">
                       {item.reference}
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">{item.user_name}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      {item.user_name}
+                    </td>
                     <td className="px-4 py-2 whitespace-nowrap">
                       {item.user_email}
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">
                       {item.user_phone}
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
-                      {item.type}
-                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap">{item.type}</td>
                     <td className="px-4 py-2 whitespace-nowrap">
                       {statusBadge(item.status)}
                     </td>

@@ -10,13 +10,16 @@ import {
   useCreateDataMutation,
   useUpdateDataMutation,
   useDeleteDataMutation,
+  useExportDataExcelMutation, // ⬅️ Import hook Export
+  useImportDataExcelMutation, // ⬅️ Import hook Import
+  SALES_TEMPLATE_URL, // ⬅️ Import URL Template
 } from "@/services/admin/sales/data.service";
 import { Data } from "@/types/admin/sales/data";
 import FormData from "@/components/form-modal/admin/sales/data-form";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import ActionsGroup from "@/components/admin-components/actions-group";
-import { Plus } from "lucide-react";
+import { ProdukToolbar } from "@/components/ui/produk-toolbar"; // ⬅️ Gunakan Toolbar standar
+import { Download } from "lucide-react";
 
 export default function PinjamanDataPage() {
   const [form, setForm] = useState<Partial<Data>>({
@@ -37,11 +40,143 @@ export default function PinjamanDataPage() {
   const categoryList = useMemo(() => data?.data || [], [data]);
   const lastPage = useMemo(() => data?.last_page || 1, [data]);
 
-  const [createCategory, { isLoading: isCreating }] =
-    useCreateDataMutation();
-  const [updateCategory, { isLoading: isUpdating }] =
-    useUpdateDataMutation();
+  // CRUD Mutations
+  const [createCategory, { isLoading: isCreating }] = useCreateDataMutation();
+  const [updateCategory, { isLoading: isUpdating }] = useUpdateDataMutation();
   const [deleteCategory] = useDeleteDataMutation();
+
+  // Excel Mutations
+  const [exportData, { isLoading: isExporting }] = useExportDataExcelMutation();
+  const [importData, { isLoading: isImporting }] = useImportDataExcelMutation();
+
+  // === HANDLE IMPORT EXCEL ===
+  const handleImportExcel = async (file?: File) => {
+    try {
+      if (!file) return Swal.fire("Gagal", "File tidak ditemukan", "error");
+      const res = await importData({ file }).unwrap();
+      Swal.fire(
+        "Import Berhasil",
+        res.message ?? "Data berhasil diunggah",
+        "success"
+      );
+      await refetch();
+    } catch (e) {
+      Swal.fire("Gagal", "Import gagal diproses", "error");
+      console.error(e);
+    }
+  };
+
+  // === HANDLE EXPORT EXCEL ===
+  const handleExportExcel = async () => {
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+        d.getDate()
+      ).padStart(2, "0")}`;
+    const today = new Date();
+    const last30 = new Date();
+    last30.setDate(today.getDate() - 30);
+    const todayStr = fmt(today),
+      last30Str = fmt(last30);
+
+    const { value: formValues } = await Swal.fire({
+      title: "Export Data Sales",
+      html: `
+        <div class="sae-wrap">
+          <div class="sae-field">
+            <label for="from_date" class="sae-label"><span class="sae-icon">📅</span> From date</label>
+            <input id="from_date" type="date" class="sae-input" />
+          </div>
+          <div class="sae-field">
+            <label for="to_date" class="sae-label"><span class="sae-icon">📆</span> To date</label>
+            <input id="to_date" type="date" class="sae-input" />
+          </div>
+          <p class="sae-hint">Pilih rentang tanggal export data.</p>
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: "Kirim",
+      cancelButtonText: "Batal",
+      width: 520,
+      color: "#0f172a",
+      background: "rgba(255,255,255,0.9)",
+      backdrop: `rgba(15,23,42,0.4)`,
+      customClass: {
+        popup: "sae-popup",
+        title: "sae-title",
+        confirmButton: "sae-btn-confirm",
+        cancelButton: "sae-btn-cancel",
+      },
+      didOpen: () => {
+        if (!document.getElementById("sae-styles")) {
+          const style = document.createElement("style");
+          style.id = "sae-styles";
+          style.innerHTML = `
+            .sae-popup{border-radius:18px;box-shadow:0 20px 60px rgba(2,6,23,.15),0 2px 8px rgba(2,6,23,.06);backdrop-filter: blur(8px); border:1px solid rgba(2,6,23,.06)}
+            .sae-title{font-weight:700; letter-spacing:.2px}
+            .sae-wrap{display:grid; gap:14px}
+            .sae-field{display:grid; gap:8px}
+            .sae-label{font-size:12px; color:#475569; display:flex; align-items:center; gap:6px}
+            .sae-icon{font-size:14px}
+            .sae-input{appearance:none;width:100%;padding:12px 14px;border-radius:12px;border:1px solid #e2e8f0;background:#fff;font-size:14px;transition:all .15s ease}
+            .sae-input:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.15)}
+            .sae-hint{margin-top:4px;font-size:12px;color:#64748b}
+            .sae-btn-confirm{background:linear-gradient(90deg,#6366f1,#22d3ee);color:white;border:none;border-radius:10px !important;padding:10px 18px;font-weight:600}
+            .sae-btn-cancel{background:white;color:#0f172a;border:1px solid #e2e8f0;border-radius:10px !important;padding:10px 18px;font-weight:600}
+          `;
+          document.head.appendChild(style);
+        }
+        const fromEl = document.getElementById("from_date") as HTMLInputElement;
+        const toEl = document.getElementById("to_date") as HTMLInputElement;
+        if (fromEl && toEl) {
+          fromEl.value = last30Str;
+          toEl.value = todayStr;
+          fromEl.max = todayStr;
+          toEl.max = todayStr;
+          toEl.min = fromEl.value;
+          fromEl.addEventListener("input", () => {
+            toEl.min = fromEl.value || "";
+            if (toEl.value < fromEl.value) toEl.value = fromEl.value;
+          });
+          toEl.addEventListener("input", () => {
+            fromEl.max = toEl.value || todayStr;
+          });
+        }
+      },
+      preConfirm: () => {
+        const from_date = (
+          document.getElementById("from_date") as HTMLInputElement
+        )?.value;
+        const to_date = (document.getElementById("to_date") as HTMLInputElement)
+          ?.value;
+        if (!from_date || !to_date) {
+          Swal.showValidationMessage("from_date dan to_date wajib diisi");
+          return;
+        }
+        return { from_date, to_date };
+      },
+    });
+
+    if (!formValues) return;
+
+    try {
+      Swal.fire({
+        title: "Memproses export...",
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+        showConfirmButton: false,
+      });
+      const res = await exportData(formValues).unwrap();
+      Swal.fire({
+        icon: "success",
+        title: "Berhasil",
+        text: res.message ?? "Permintaan export diterima, cek notifikasi.",
+      });
+    } catch (e) {
+      Swal.fire("Gagal", "Export gagal diproses", "error");
+      console.error(e);
+    }
+  };
 
   const handleSubmit = async () => {
     try {
@@ -119,28 +254,36 @@ export default function PinjamanDataPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="rounded-md bg-white p-4 border border-gray-100 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          {/* Kiri: filter */}
-          <div className="w-full flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Input
-              placeholder="Cari data..."
-              value={query}
-              onChange={(e) => {
-                const q = e.target.value;
-                setQuery(q);
-              }}
-              className="w-full sm:max-w-xs"
-            />
-          </div>
-
-          {/* Kanan: aksi */}
-          <div className="shrink-0 flex flex-wrap items-center gap-2">
-            {/* Tambah data (opsional) */}
-            {openModal && <Button onClick={openModal}><Plus /> Data Sales</Button>}
-          </div>
-        </div>
-      </div>
+      {/* MENGGANTI BAGIAN FILTER MANUAL DENGAN PRODUK TOOLBAR */}
+      <ProdukToolbar
+        // Search & Add
+        onSearchChange={(q) => setQuery(q)}
+        openModal={() => {
+          setForm({ status: true });
+          setEditingId(null);
+          setReadonly(false);
+          openModal();
+        }}
+        showAddButton={true}
+        addButtonLabel="Data Sales"
+        // Import
+        enableImport={true}
+        onImportExcel={(file) => {
+          if (!isImporting) void handleImportExcel(file);
+        }}
+        importLabel={isImporting ? "Mengunggah..." : "Import Excel"}
+        // Export
+        enableExport={true}
+        onExportExcel={() => {
+          if (!isExporting) void handleExportExcel();
+        }}
+        exportLabel={isExporting ? "Memproses..." : "Export Excel"}
+        exportIcon={<Download className="mr-2 size-4" />}
+        // Template CSV
+        showTemplateCsvButton={true}
+        templateCsvUrl={SALES_TEMPLATE_URL}
+        templateCsvLabel="Template CSV"
+      />
 
       <Card>
         <CardContent className="p-0 overflow-x-auto">
@@ -160,13 +303,13 @@ export default function PinjamanDataPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="text-center p-4">
+                  <td colSpan={8} className="text-center p-4">
                     Memuat data...
                   </td>
                 </tr>
               ) : filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center p-4">
+                  <td colSpan={8} className="text-center p-4">
                     Tidak ada data
                   </td>
                 </tr>
@@ -182,7 +325,9 @@ export default function PinjamanDataPage() {
                         />
                       </div>
                     </td>
-                    <td className="px-4 py-2 font-mono text-sm">{item.sales_category_code} - {item.sales_category_name}</td>
+                    <td className="px-4 py-2 font-mono text-sm">
+                      {item.sales_category_code} - {item.sales_category_name}
+                    </td>
                     <td className="px-4 py-2 font-mono text-sm">{item.code}</td>
                     <td className="px-4 py-2 font-medium">{item.name}</td>
                     <td className="px-4 py-2 text-gray-600 max-w-xs truncate">
@@ -193,7 +338,9 @@ export default function PinjamanDataPage() {
                     </td>
                     <td className="px-4 py-2">
                       <Badge
-                        variant={item.status === true ? "success" : "destructive"}
+                        variant={
+                          item.status === true ? "success" : "destructive"
+                        }
                       >
                         {item.status === true ? "Aktif" : "Nonaktif"}
                       </Badge>

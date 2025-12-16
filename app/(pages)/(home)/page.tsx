@@ -1,9 +1,17 @@
-import HomePage from "@/components/main/home-page";
+import CTA from "@/components/main/home-page/new/CTA";
+import Features from "@/components/main/home-page/new/Features";
+import Hero from "@/components/main/home-page/new/Hero";
+import Testimonials from "@/components/main/home-page/new/Testimonials";
 
-export default function Home() {
+const HomePage = () => {
   return (
-    <div className="min-h-screen pt-14">
-      <HomePage />
-    </div>
+    <>
+      <Hero />
+      <Features />
+      <CTA />
+      <Testimonials />
+    </>
   );
-}
+};
+
+export default HomePage;

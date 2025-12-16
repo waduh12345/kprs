@@ -18,6 +18,7 @@ import { FaMoneyBillWave, FaCoins } from "react-icons/fa";
 import { useSession } from "next-auth/react";
 import type { User } from "@/types/user";
 import ClientAuthGuard from "@/components/client-guards";
+import { IconDualScreen, IconLayoutBoardSplit } from "@tabler/icons-react";
 
 const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -115,7 +116,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
               label: "Proses Auto Debet",
               href: "/admin/simpanan/auto-debet/proses",
             },
-          ]
+          ],
         },
         {
           id: "simpanan/laporan-simpanan",
@@ -132,7 +133,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
               label: "Nominatif Simpanan",
               href: "/admin/simpanan/laporan/nominatif-simpanan",
             },
-          ]
+          ],
         },
       ],
     },
@@ -200,7 +201,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
               label: "Pelunasan Pembiayaan",
               href: "/admin/pembiayaan/transaksi/pelunasan",
             },
-          ]
+          ],
         },
         {
           id: "pembiayaan/proses-auto-debet",
@@ -232,7 +233,58 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
               label: "Performance",
               href: "/admin/pembiayaan/laporan/performance",
             },
-          ]
+          ],
+        },
+      ],
+    },
+    {
+      id: "asset",
+      label: "Modul Asset",
+      icon: <IconLayoutBoardSplit className="h-5 w-5" />,
+      href: "/admin/asset/kategori",
+      children: [
+        {
+          id: "asset-kategori",
+          label: "Kategori",
+          href: "/admin/asset/kategori",
+        },
+        {
+          id: "asset-lokasi",
+          label: "Lokasi",
+          href: "/admin/asset/lokasi",
+        },
+        {
+          id: "asset-data",
+          label: "Data Asset",
+          href: "/admin/asset/data",
+        },
+        {
+          id: "asset-depresiasi",
+          label: "Depresiasi Aset",
+          href: "/admin/asset/depresiasi",
+        },
+      ],
+    },
+    {
+      id: "scoring",
+      label: "Modul Scoring",
+      icon: <IconDualScreen className="h-5 w-5" />,
+      href: "/admin/scoring/kriteria",
+      children: [
+        {
+          id: "scoring-kriteria",
+          label: "Kriteria",
+          href: "/admin/scoring/kriteria",
+        },
+        {
+          id: "scoring-aturan",
+          label: "Aturan",
+          href: "/admin/scoring/aturan",
+        },
+        {
+          id: "scoring-simulasi",
+          label: "Simulasi",
+          href: "/admin/scoring/simulasi",
         },
       ],
     },
@@ -326,7 +378,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
               label: "Laporan Rekonsiliasi Antar Rekening",
               href: "/admin/akuntansi/laporan/rekonsiliasi-antar-rekening",
             },
-          ]
+          ],
         },
       ],
     },
@@ -371,7 +423,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
               label: "Laporan SHU",
               href: "/admin/akhir-bulan-akhir-tahun/proses-shu/laporan-shu",
             },
-          ]
+          ],
         },
       ],
     },

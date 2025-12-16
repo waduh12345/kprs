@@ -6,6 +6,10 @@ import {
   UpdateDataRequest,
 } from "@/types/admin/sales/data";
 
+// Constant URL Template (Bisa diimport langsung di component)
+export const SALES_TEMPLATE_URL =
+  "https://api-koperasi.naditechno.id/template-import-sales.csv";
+
 export const kategoriApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     // 🔍 Get All Data (with pagination)
@@ -17,7 +21,12 @@ export const kategoriApi = apiSlice.injectEndpoints({
         total: number;
         per_page: number;
       },
-      { page: number; paginate: number; orderBy?: string; order?: "asc" | "desc" }
+      {
+        page: number;
+        paginate: number;
+        orderBy?: string;
+        order?: "asc" | "desc";
+      }
     >({
       query: ({ page, paginate, orderBy, order }) => ({
         url: `/sales/sales`,
@@ -38,7 +47,7 @@ export const kategoriApi = apiSlice.injectEndpoints({
       }),
     }),
 
-    // 🔍 Get Simpanan Category by ID
+    // 🔍 Get Data by ID
     getDataById: builder.query<Data, number>({
       query: (id) => ({
         url: `/sales/sales/${id}`,
@@ -51,11 +60,8 @@ export const kategoriApi = apiSlice.injectEndpoints({
       }) => response.data,
     }),
 
-    // ➕ Create Simpanan Category
-    createData: builder.mutation<
-      Data,
-      CreateDataRequest
-    >({
+    // ➕ Create Data
+    createData: builder.mutation<Data, CreateDataRequest>({
       query: (payload) => ({
         url: `/sales/sales`,
         method: "POST",
@@ -68,7 +74,7 @@ export const kategoriApi = apiSlice.injectEndpoints({
       }) => response.data,
     }),
 
-    // ✏️ Update Simpanan Category by ID
+    // ✏️ Update Data by ID
     updateData: builder.mutation<
       Data,
       { id: number; payload: UpdateDataRequest }
@@ -85,11 +91,8 @@ export const kategoriApi = apiSlice.injectEndpoints({
       }) => response.data,
     }),
 
-    // ❌ Delete Simpanan Category by ID
-    deleteData: builder.mutation<
-      { code: number; message: string },
-      number
-    >({
+    // ❌ Delete Data by ID
+    deleteData: builder.mutation<{ code: number; message: string }, number>({
       query: (id) => ({
         url: `/sales/sales/${id}`,
         method: "DELETE",
@@ -99,6 +102,50 @@ export const kategoriApi = apiSlice.injectEndpoints({
         message: string;
         data: null;
       }) => response,
+    }),
+
+    // ✅ EXPORT Excel (body JSON: { from_date, to_date })
+    exportDataExcel: builder.mutation<
+      { code: number; message: string },
+      { from_date: string; to_date: string }
+    >({
+      query: ({ from_date, to_date }) => ({
+        url: `/sales/sales/export`,
+        method: "POST",
+        body: { from_date, to_date },
+      }),
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data?: string;
+      }) => ({
+        code: response.code,
+        message: response.message,
+      }),
+    }),
+
+    // ✅ IMPORT Excel (body FormData: { file })
+    importDataExcel: builder.mutation<
+      { code: number; message: string },
+      { file: File }
+    >({
+      query: ({ file }) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        return {
+          url: `/sales/sales/import`,
+          method: "POST",
+          body: formData,
+        };
+      },
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data?: unknown;
+      }) => ({
+        code: response.code,
+        message: response.message,
+      }),
     }),
   }),
   overrideExisting: false,
@@ -110,4 +157,6 @@ export const {
   useCreateDataMutation,
   useUpdateDataMutation,
   useDeleteDataMutation,
+  useExportDataExcelMutation,
+  useImportDataExcelMutation,
 } = kategoriApi;

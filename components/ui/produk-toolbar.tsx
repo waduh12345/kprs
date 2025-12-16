@@ -172,7 +172,7 @@ export function ProdukToolbar({
 
   // template csv (opsional)
   showTemplateCsvButton = false,
-  templateCsvUrl = "https://api-koperasi.inovasidigitalpurwokerto.id/template-import-anggota.csv",
+  templateCsvUrl = "https://api-koperasi.naditechno.id/template-import-anggota.csv",
   templateCsvLabel = "Template CSV",
 
   // date
@@ -296,27 +296,6 @@ export function ProdukToolbar({
             <span className="text-xs font-semibold text-gray-600">
               {statusFilterLabel}
             </span>
-          )}
-
-          {enableStatusFilter && (
-            <Select
-              value={status}
-              onValueChange={(val) => {
-                setStatus(val);
-                onStatusChange?.(val);
-              }}
-            >
-              <SelectTrigger className="h-12 py-3 w-full sm:w-56">
-                <SelectValue placeholder="Pilih status" />
-              </SelectTrigger>
-              <SelectContent>
-                {statusOptions.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           )}
 
           {/* Extra selects (opsional) */}
