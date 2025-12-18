@@ -83,7 +83,7 @@ export default function FormData({
             {isCategoryLoading ? (
               <option disabled>Memuat kategori...</option>
             ) : (
-              categories.map((cat: any) => (
+              categories.map((cat: { id: number; name: string; code: string }) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.name} ({cat.code})
                 </option>

@@ -289,7 +289,7 @@ export default function LaporanLabaRugiPage() {
           ) : (
             <tr>
               <td colSpan={2} className="text-center py-8 text-gray-500">
-                Data belum tersedia. Silakan tentukan periode dan klik "Tarik Data Laporan".
+                Data belum tersedia. Silakan tentukan periode dan klik &quot;Tarik Data Laporan&quot;.
               </td>
             </tr>
           )}

@@ -62,14 +62,40 @@ function AnggotaAddEditPageInner() {
       const type = (detailData.type as "individu" | "perusahaan") || "individu";
       
       // 2. Ambil data nested berdasarkan tipe
-      // Menggunakan 'any' sementara untuk akses properti dinamis jika tipe API belum diupdate
-      const rawData = detailData as any; 
+      // Tipe detailData bisa memiliki properti 'individu' atau 'perusahaan'
+      type RawDataType = typeof detailData & {
+        individu?: {
+          name?: string;
+          email?: string;
+          phone?: string;
+          address?: string;
+          npwp?: string;
+          nik?: string;
+          gender?: string;
+          birth_place?: string;
+          birth_date?: string;
+          marital_status?: string;
+          education?: string;
+          occupation?: string;
+        };
+        perusahaan?: {
+          name?: string;
+          email?: string;
+          phone?: string;
+          address?: string;
+          npwp?: string;
+          company_type?: string;
+          registration_number?: string;
+          established_at?: string;
+        };
+      };
+      const rawData = detailData as RawDataType; 
       const specificData = type === "individu" ? rawData.individu : rawData.perusahaan;
 
       // 3. Siapkan Dokumen (Reset file object, pertahankan media untuk preview)
       const docs: DocumentsAnggota[] =
         detailData.documents && detailData.documents.length > 0
-          ? detailData.documents.map((d: any) => ({
+          ? detailData.documents.map((d: DocumentsAnggota) => ({
               ...d,
               document: null, // Reset input file
               // Pastikan media terhubung agar tombol "Lihat file" muncul
@@ -92,21 +118,21 @@ function AnggotaAddEditPageInner() {
         npwp: specificData?.npwp || "",
         
         // Data Spesifik Individu
-        ...(type === "individu" && {
-          nik: specificData?.nik,
-          gender: specificData?.gender,
-          birth_place: specificData?.birth_place,
-          birth_date: specificData?.birth_date, // Format ISO string akan dihandle oleh formatDateForInput di form
-          marital_status: specificData?.marital_status,
-          education: specificData?.education,
-          occupation: specificData?.occupation,
+        ...(type === "individu" && rawData.individu && {
+          nik: rawData.individu.nik,
+          gender: rawData.individu.gender,
+          birth_place: rawData.individu.birth_place,
+          birth_date: rawData.individu.birth_date, // Format ISO string akan dihandle oleh formatDateForInput di form
+          marital_status: rawData.individu.marital_status,
+          education: rawData.individu.education,
+          occupation: rawData.individu.occupation,
         }),
 
         // Data Spesifik Perusahaan
-        ...(type === "perusahaan" && {
-          company_type: specificData?.company_type,
-          registration_number: specificData?.registration_number,
-          established_at: specificData?.established_at,
+        ...(type === "perusahaan" && specificData && {
+          company_type: (specificData as RawDataType["perusahaan"])?.company_type,
+          registration_number: (specificData as RawDataType["perusahaan"])?.registration_number,
+          established_at: (specificData as RawDataType["perusahaan"])?.established_at,
         }),
       };
 
@@ -187,12 +213,15 @@ function AnggotaAddEditPageInner() {
       }
 
       router.push("/admin/anggota");
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Menampilkan pesan error detail dari backend jika ada
-      const msg = err?.data?.message || err.message || "Gagal menyimpan data";
-      // Jika ada error spesifik per field (seperti documents.0.file), tampilkan di console
-      if(err?.data?.errors) console.error("Validation Errors:", err.data.errors);
-      
+      let msg = "Gagal menyimpan data";
+      if (typeof err === "object" && err !== null) {
+        const errorObj = err as { data?: { message?: string; errors?: unknown }; message?: string };
+        msg = errorObj.data?.message || errorObj.message || msg;
+        // Jika ada error spesifik per field (seperti documents.0.file), tampilkan di console
+        if (errorObj.data?.errors) console.error("Validation Errors:", errorObj.data.errors);
+      }
       Swal.fire("Gagal", msg, "error");
     }
   };

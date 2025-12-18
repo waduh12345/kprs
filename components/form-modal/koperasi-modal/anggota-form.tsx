@@ -144,7 +144,11 @@ export default function AnggotaForm({
     });
   };
 
-  const updateDoc = (idx: number, field: keyof DocumentsAnggota, value: any) => {
+  const updateDoc = (
+    idx: number,
+    field: keyof DocumentsAnggota,
+    value: string | number | File | null | DocumentsAnggota["media"]
+  ) => {
     setForm((prev) => {
       const docs = [...(prev.documents || [])] as DocumentsAnggota[];
       docs[idx] = { ...docs[idx], [field]: value };
@@ -152,7 +156,7 @@ export default function AnggotaForm({
     });
   };
 
-  const handleInputChange = (field: keyof AnggotaFormState, value: any) => {
+  const handleInputChange = (field: keyof AnggotaFormState, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (fieldErrors[field]) {
       setFieldErrors((prev) => {
