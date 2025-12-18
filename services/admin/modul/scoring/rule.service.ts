@@ -18,7 +18,6 @@ export const scoringRuleApi = apiSlice.injectEndpoints({
         const paginate = params?.paginate || 10;
         return `/scoring/rules?page=${page}&paginate=${paginate}`;
       },
-      providesTags: ["ScoringRule"], // Tag untuk auto-refresh
       transformResponse: (response: {
         code: number;
         message: string;
@@ -66,7 +65,6 @@ export const scoringRuleApi = apiSlice.injectEndpoints({
         method: "POST",
         body: payload,
       }),
-      invalidatesTags: ["ScoringRule"], // Refresh list setelah create
       transformResponse: (response: {
         code: number;
         message: string;
@@ -96,7 +94,6 @@ export const scoringRuleApi = apiSlice.injectEndpoints({
         method: "PUT",
         body: payload,
       }),
-      invalidatesTags: ["ScoringRule"], // Refresh list setelah update
       transformResponse: (response: {
         code: number;
         message: string;
@@ -110,7 +107,6 @@ export const scoringRuleApi = apiSlice.injectEndpoints({
         url: `/scoring/rules/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["ScoringRule"], // Refresh list setelah delete
       transformResponse: (response: {
         code: number;
         message: string;

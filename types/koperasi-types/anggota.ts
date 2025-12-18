@@ -36,6 +36,7 @@ export interface AnggotaKoperasi {
   user_email?: string;
   type: string;
   user_phone?: string;
+  individu_name?: string;
   name?: string;
   email?: string;
   phone?: string;

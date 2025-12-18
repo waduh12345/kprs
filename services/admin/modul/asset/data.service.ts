@@ -19,7 +19,6 @@ export const dataAssetApi = apiSlice.injectEndpoints({
         const paginate = params?.paginate || 10;
         return `/asset/assets?page=${page}&paginate=${paginate}`;
       },
-      providesTags: ["DataAsset"], // Tag untuk auto-refresh
       transformResponse: (response: {
         code: number;
         message: string;
@@ -72,7 +71,6 @@ export const dataAssetApi = apiSlice.injectEndpoints({
         method: "POST",
         body: payload,
       }),
-      invalidatesTags: ["DataAsset"], // Refresh list setelah create
       transformResponse: (response: {
         code: number;
         message: string;
@@ -107,7 +105,6 @@ export const dataAssetApi = apiSlice.injectEndpoints({
         method: "PUT",
         body: payload,
       }),
-      invalidatesTags: ["DataAsset"], // Refresh list setelah update
       transformResponse: (response: {
         code: number;
         message: string;
@@ -121,7 +118,6 @@ export const dataAssetApi = apiSlice.injectEndpoints({
         url: `/asset/assets/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["DataAsset"], // Refresh list setelah delete
       transformResponse: (response: {
         code: number;
         message: string;

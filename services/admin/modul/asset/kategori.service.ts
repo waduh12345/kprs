@@ -19,7 +19,6 @@ export const assetCategoryApi = apiSlice.injectEndpoints({
         const paginate = params?.paginate || 10;
         return `/asset/master/categories?page=${page}&paginate=${paginate}`;
       },
-      providesTags: ["AssetCategory"], // Menambahkan tag agar auto-refresh saat create/update/delete
       transformResponse: (response: {
         code: number;
         message: string;
@@ -57,7 +56,6 @@ export const assetCategoryApi = apiSlice.injectEndpoints({
         method: "POST",
         body: payload,
       }),
-      invalidatesTags: ["AssetCategory"], // Refresh list setelah create
       transformResponse: (response: {
         code: number;
         message: string;
@@ -80,7 +78,6 @@ export const assetCategoryApi = apiSlice.injectEndpoints({
         method: "PUT",
         body: payload,
       }),
-      invalidatesTags: ["AssetCategory"], // Refresh list setelah update
       transformResponse: (response: {
         code: number;
         message: string;
@@ -94,7 +91,6 @@ export const assetCategoryApi = apiSlice.injectEndpoints({
         url: `/asset/master/categories/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["AssetCategory"], // Refresh list setelah delete
       transformResponse: (response: {
         code: number;
         message: string;

@@ -18,7 +18,6 @@ export const scoringKriteriaApi = apiSlice.injectEndpoints({
         const paginate = params?.paginate || 10;
         return `/scoring/criteria?page=${page}&paginate=${paginate}`;
       },
-      providesTags: ["ScoringKriteria"], // Tag untuk auto-refresh
       transformResponse: (response: {
         code: number;
         message: string;
@@ -56,7 +55,6 @@ export const scoringKriteriaApi = apiSlice.injectEndpoints({
         method: "POST",
         body: payload,
       }),
-      invalidatesTags: ["ScoringKriteria"], // Refresh list setelah create
       transformResponse: (response: {
         code: number;
         message: string;
@@ -77,7 +75,6 @@ export const scoringKriteriaApi = apiSlice.injectEndpoints({
         method: "PUT",
         body: payload,
       }),
-      invalidatesTags: ["ScoringKriteria"], // Refresh list setelah update
       transformResponse: (response: {
         code: number;
         message: string;
@@ -91,7 +88,6 @@ export const scoringKriteriaApi = apiSlice.injectEndpoints({
         url: `/scoring/criteria/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["ScoringKriteria"], // Refresh list setelah delete
       transformResponse: (response: {
         code: number;
         message: string;

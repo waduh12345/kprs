@@ -86,7 +86,6 @@ export const scoringSimulationApi = apiSlice.injectEndpoints({
           params: queryParams, // RTK Query akan otomatis menyusun ?key=value
         };
       },
-      providesTags: ["ScoringSimulation"],
       transformResponse: (response: {
         code: number;
         message: string;
@@ -126,7 +125,6 @@ export const scoringSimulationApi = apiSlice.injectEndpoints({
         method: "POST",
         body: payload,
       }),
-      invalidatesTags: ["ScoringSimulation"], // Refresh list setelah create
       transformResponse: (response: {
         code: number;
         message: string;
@@ -141,7 +139,6 @@ export const scoringSimulationApi = apiSlice.injectEndpoints({
         url: `/scoring/rules/${id}`, // URL diubah sesuai request
         method: "DELETE",
       }),
-      invalidatesTags: ["ScoringSimulation"], // Refresh list setelah delete
       transformResponse: (response: {
         code: number;
         message: string;

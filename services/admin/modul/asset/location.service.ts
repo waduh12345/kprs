@@ -19,7 +19,6 @@ export const assetLocationApi = apiSlice.injectEndpoints({
         const paginate = params?.paginate || 10;
         return `/asset/master/locations?page=${page}&paginate=${paginate}`;
       },
-      providesTags: ["AssetLocation"], // Tag untuk auto-refresh
       transformResponse: (response: {
         code: number;
         message: string;
@@ -58,7 +57,6 @@ export const assetLocationApi = apiSlice.injectEndpoints({
         method: "POST",
         body: payload,
       }),
-      invalidatesTags: ["AssetLocation"], // Refresh list setelah create
       transformResponse: (response: {
         code: number;
         message: string;
@@ -81,7 +79,6 @@ export const assetLocationApi = apiSlice.injectEndpoints({
         method: "PUT",
         body: payload,
       }),
-      invalidatesTags: ["AssetLocation"], // Refresh list setelah update
       transformResponse: (response: {
         code: number;
         message: string;
@@ -95,7 +92,6 @@ export const assetLocationApi = apiSlice.injectEndpoints({
         url: `/asset/master/locations/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["AssetLocation"], // Refresh list setelah delete
       transformResponse: (response: {
         code: number;
         message: string;

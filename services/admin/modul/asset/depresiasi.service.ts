@@ -54,7 +54,6 @@ export const assetDepreciationApi = apiSlice.injectEndpoints({
 
         return url;
       },
-      providesTags: ["AssetDepreciation"], // Tag agar bisa di-invalidate jika perlu
       transformResponse: (response: {
         code: number;
         message: string;
