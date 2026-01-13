@@ -40,4 +40,5 @@ export interface SimpananBerjangka {
   image: File | string | null;
   no_bilyet: string | null;
   category_interest_rate: number | null;
+  cashback_nominal: number | null;
 }

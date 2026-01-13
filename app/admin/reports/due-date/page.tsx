@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, Printer, Filter, Calculator } from "lucide-react";
+import { formatRupiahWithRp } from "@/lib/format-utils";
 
 // --- TYPES ---
 interface SimpananItem {
@@ -25,6 +26,9 @@ interface SimpananItem {
   user_name: string;
   nominal: number;
   description: string | null;
+  // UPDATE: Menambahkan type untuk cashback
+  cashback_nominal: number | null;
+  cashback_type: string | null;
 }
 
 // --- UTILS ---
@@ -187,15 +191,7 @@ export default function JatuhTempoPage() {
           </span>
         </div>
 
-        {/* NOTE: 
-           - 'overflow-x-auto' membuat scroll horizontal jika layar kecil.
-           - 'print:overflow-visible' memastikan saat print tidak ada scrollbar.
-        */}
         <div className="overflow-x-auto print:overflow-visible">
-          {/* NOTE:
-             - 'min-w-[1500px]': Memaksa tabel lebar di layar agar kolom lega & memicu scroll.
-             - 'print:min-w-0 print:w-full': Saat print, reset lebar agar pas kertas.
-          */}
           <table className="w-full min-w-[1500px] text-xs text-left border-collapse print:min-w-0 print:w-full">
             <thead className="bg-red-700 text-white font-semibold print:bg-gray-200 print:text-black">
               <tr>
@@ -257,7 +253,7 @@ export default function JatuhTempoPage() {
                       {item.no_ao || "-"}
                     </td>
                     <td className="px-2 py-1 border border-gray-300 font-mono">
-                      {item.no_bilyet || item.reference}
+                      {item.no_bilyet || "-"}
                     </td>
                     <td className="px-2 py-1 border border-gray-300 text-center whitespace-nowrap">
                       {formatDate(item.maturity_date)}
@@ -268,11 +264,23 @@ export default function JatuhTempoPage() {
                     <td className="px-2 py-1 border border-gray-300 text-center">
                       {Number(item.category_interest_rate).toFixed(2)}
                     </td>
-                    <td className="px-2 py-1 border border-gray-300 text-center">
-                      0
+
+                    {/* --- UPDATE: LOGIKA TAMPILAN CASHBACK --- */}
+                    <td className="px-2 py-1 border border-gray-300 text-center whitespace-nowrap">
+                      {/* Cek jika type adalah percentage, tampilkan dengan %, jika tidak tampilkan format Rupiah */}
+                      {item.cashback_type === "percentage" ? (
+                        <span>
+                          {item.cashback_nominal
+                            ? `${item.cashback_nominal}%`
+                            : "0%"}
+                        </span>
+                      ) : (
+                        <span>
+                          {formatRupiahWithRp(item.cashback_nominal || 0)}
+                        </span>
+                      )}
                     </td>
 
-                    {/* Menggunakan whitespace-normal break-words agar nama panjang turun ke bawah (tidak tertimpa) */}
                     <td className="px-2 py-1 border border-gray-300 uppercase whitespace-normal break-words">
                       {item.user_name}
                     </td>
@@ -284,7 +292,6 @@ export default function JatuhTempoPage() {
                       0,00
                     </td>
 
-                    {/* Menggunakan whitespace-normal break-words agar notes panjang turun ke bawah */}
                     <td className="px-2 py-1 border border-gray-300 text-xs whitespace-normal break-words">
                       {item.description || "-"}
                     </td>
@@ -318,17 +325,12 @@ export default function JatuhTempoPage() {
       {/* --- GLOBAL CSS KHUSUS PRINT --- */}
       <style jsx global>{`
         @media print {
-          /* 1. Kertas Landscape & Margin Tipis */
           @page {
             size: landscape;
             margin: 5mm;
           }
-
-          /* 2. Sembunyikan Layout Global Next.js */
           body > *:not(#printable-root) {
           }
-
-          /* 3. Reset Body */
           body,
           html {
             background-color: white;
@@ -336,21 +338,15 @@ export default function JatuhTempoPage() {
             width: 100%;
             overflow: visible;
           }
-
-          /* 4. Sembunyikan elemen lain & Zoom Out Content */
           body * {
             visibility: hidden;
           }
-
-          /* 5. Tampilkan Header & Tabel */
           #printable-header,
           #printable-header *,
           #printable-table,
           #printable-table * {
             visibility: visible;
           }
-
-          /* 6. Posisikan Konten & Scaling (Zoom) agar muat 1 Halaman */
           #printable-header {
             position: absolute;
             top: 0;
@@ -359,34 +355,23 @@ export default function JatuhTempoPage() {
           }
           #printable-table {
             position: absolute;
-            top: 60px; /* Jarak dari header */
+            top: 60px;
             left: 0;
             width: 100%;
-            /* TRIK UTAMA: Zoom out. 
-               Nilai 65% - 75% biasanya pas untuk tabel 11 kolom agar muat 1 page width.
-            */
             zoom: 70%;
           }
-
-          /* 7. Warna & Font */
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-
-          /* Font tabel diperkecil saat print untuk menghemat ruang */
           table {
             font-size: 9px !important;
           }
-
-          /* Pastikan text wrap saat print agar tidak tertimpa/terpotong */
           td,
           th {
             white-space: normal !important;
             word-wrap: break-word !important;
           }
-
-          /* Utility */
           .print\:hidden {
             display: none !important;
           }
@@ -405,7 +390,6 @@ export default function JatuhTempoPage() {
           .print\:w-full {
             width: 100% !important;
           }
-
           tr {
             page-break-inside: avoid;
           }

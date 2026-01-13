@@ -399,7 +399,17 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           label: "Jatuh Tempo Simpanan Berjangka",
           href: "/admin/reports/due-date",
         },
-      ]
+        {
+          id: "reports/member",
+          label: "Laporan Anggota",
+          href: "/admin/reports/member",
+        },
+        {
+          id: "reports/withholding-tax-slip",
+          label: "Rekap Bukti Potong Pajak",
+          href: "/admin/reports/tax-slip",
+        },
+      ],
     },
     {
       id: "akhir-bulan-akhir-tahun",
