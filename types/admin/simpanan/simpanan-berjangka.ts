@@ -38,4 +38,6 @@ export interface SimpananBerjangka {
   payment_method: string;
   payment_channel: string;
   image: File | string | null;
+  no_bilyet: string | null;
+  category_interest_rate: number | null;
 }

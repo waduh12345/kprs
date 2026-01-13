@@ -10,6 +10,7 @@ import {
   GitBranch,
   Clock,
   Users2,
+  NotebookPen,
 } from "lucide-react";
 import Header from "@/components/admin-components/header";
 import Sidebar from "@/components/admin-components/sidebar";
@@ -381,6 +382,24 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           ],
         },
       ],
+    },
+    {
+      id: "reports",
+      label: "Reports",
+      icon: <NotebookPen className="h-5 w-5" />,
+      href: "#",
+      children: [
+        {
+          id: "reports/birth-day",
+          label: "Birth Day Anggota",
+          href: "/admin/reports/birth-day",
+        },
+        {
+          id: "reports/due-date",
+          label: "Jatuh Tempo Simpanan Berjangka",
+          href: "/admin/reports/due-date",
+        },
+      ]
     },
     {
       id: "akhir-bulan-akhir-tahun",
