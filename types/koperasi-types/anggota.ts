@@ -54,5 +54,5 @@ export interface AnggotaKoperasi {
   jabatan: string | null;
   documents: DocumentsAnggota[];
   registration_number?: string;
-  individu_birth_date: string | null;
+  individu_birth_date?: string | null;
 }
