@@ -187,11 +187,11 @@ function AnggotaAddEditPageInner() {
       docs.forEach((d) => {
         // LOGIC: Hanya kirim ke backend jika 'document' adalah File baru.
         // Jika dokumen lama (d.document === null atau string), JANGAN kirim.
-        // Ini untuk menghindari error "file field is required".
-        
-        if (d.document instanceof File) {
+        // Cast ke unknown karena tipe DocumentsAnggota.document adalah string | null.
+        const doc = d.document as unknown;
+        if (doc instanceof File) {
           fd.append(`documents[${docIndex}][key]`, d.key);
-          fd.append(`documents[${docIndex}][file]`, d.document);
+          fd.append(`documents[${docIndex}][file]`, doc);
           
           // Jika ini adalah replace file untuk dokumen yang sudah ada (punya ID)
           // Kirim ID-nya agar backend tahu ini update, bukan create baru.

@@ -1,101 +1,74 @@
 import { apiSlice } from "../base-query";
+import type {
+  MeninggalCreatePayload,
+  MeninggalDetail,
+  MeninggalItem,
+  MeninggalListParams,
+  MeninggalUpdatePayload,
+  MeninggalValidatePayload,
+  MeninggalValidateStatus,
+} from "@/types/admin/anggota-meninggal";
 
-// Types for API responses
-export interface AnggotaMeninggal {
-  id: number;
-  anggota_id: number;
-  deceased_at: string;
-  description: string | null;
-  status: number;
-  created_at: string;
-  updated_at: string;
-  anggota_name: string;
-  anggota_email: string;
-  anggota_phone: string;
-  anggota_nik: string;
-  media: any[];
-  anggota?: {
-    id: number;
-    user_id: number;
-    reference: string;
-    ref_number: number;
-    name: string;
-    email: string;
-    phone: string;
-    address: string;
-    gender: string;
-    birth_date: string;
-    birth_place: string;
-    nik: string;
-    npwp: string | null;
-    nip: string | null;
-    unit_kerja: string | null;
-    jabatan: string | null;
-    status: number;
-    created_at: string;
-    updated_at: string;
-  };
-}
-
-export interface AnggotaMeninggalResponse {
-  current_page: number;
-  data: AnggotaMeninggal[];
-  first_page_url: string;
-  from: number;
-  last_page: number;
-  last_page_url: string;
-  links: Array<{
-    url: string | null;
-    label: string;
-    page: number | null;
-    active: boolean;
-  }>;
-  next_page_url: string | null;
-  path: string;
-  per_page: number;
-  prev_page_url: string | null;
-  to: number;
-  total: number;
-}
-
-export interface CreateAnggotaMeninggalRequest {
-  anggota_id: number;
-  deceased_at: string;
-  description?: string;
-  status: number;
-}
-
-export interface UpdateAnggotaMeninggalRequest {
-  anggota_id?: number;
-  deceased_at?: string;
-  description?: string;
-  status?: number;
-}
-
-export const anggotaMeninggalApi = apiSlice.injectEndpoints({
+export const meninggalApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    // 🔍 Get All Anggota Meninggal
-    getAnggotaMeninggalList: builder.query<
-      AnggotaMeninggalResponse,
-      { page: number; paginate: number }
+    // GET /anggota/meninggals – list dengan filter & pagination
+    getMeninggalList: builder.query<
+      {
+        data: MeninggalItem[];
+        last_page: number;
+        current_page: number;
+        total: number;
+        per_page: number;
+      },
+      MeninggalListParams
     >({
-      query: ({ page, paginate }) => ({
-        url: `/anggota/meninggals`,
-        method: "GET",
-        params: {
-          page,
-          paginate,
-        },
-      }),
+      query: (params) => {
+        const {
+          page = 1,
+          paginate = 10,
+          search,
+          status,
+          orderBy,
+          order,
+          searchBySpecific,
+        } = params;
+        return {
+          url: `/anggota/meninggals`,
+          method: "GET",
+          params: {
+            page,
+            paginate,
+            ...(search != null && search.trim() !== ""
+              ? { search: search.trim() }
+              : {}),
+            ...(status !== undefined ? { status } : {}),
+            ...(orderBy != null ? { orderBy } : {}),
+            ...(order != null ? { order } : {}),
+            ...(searchBySpecific != null ? { searchBySpecific } : {}),
+          },
+        };
+      },
       transformResponse: (response: {
         code: number;
         message: string;
-        data: AnggotaMeninggalResponse;
-      }) => response.data,
+        data: {
+          current_page: number;
+          data: MeninggalItem[];
+          last_page: number;
+          total: number;
+          per_page: number;
+        };
+      }) => ({
+        data: response.data.data,
+        last_page: response.data.last_page,
+        current_page: response.data.current_page,
+        total: response.data.total,
+        per_page: response.data.per_page,
+      }),
     }),
 
-    // 🔍 Get Anggota Meninggal by ID
-    getAnggotaMeninggalById: builder.query<AnggotaMeninggal, number>({
+    // GET /anggota/meninggals/:id – detail (dengan media, anggota)
+    getMeninggalById: builder.query<MeninggalDetail, number>({
       query: (id) => ({
         url: `/anggota/meninggals/${id}`,
         method: "GET",
@@ -103,79 +76,84 @@ export const anggotaMeninggalApi = apiSlice.injectEndpoints({
       transformResponse: (response: {
         code: number;
         message: string;
-        data: AnggotaMeninggal;
+        data: MeninggalDetail;
       }) => response.data,
     }),
 
-    // ➕ Create Anggota Meninggal
-    createAnggotaMeninggal: builder.mutation<
-      { code: number; message: string; data: AnggotaMeninggal },
-      CreateAnggotaMeninggalRequest
-    >({
+    // POST /anggota/meninggals – pengajuan meninggal (status opsional, default Pending)
+    createMeninggal: builder.mutation<MeninggalDetail, MeninggalCreatePayload>({
       query: (payload) => ({
         url: `/anggota/meninggals`,
         method: "POST",
         body: payload,
+        headers: { "Content-Type": "application/json" },
       }),
-      invalidatesTags: ["AnggotaMeninggal"],
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: MeninggalDetail;
+      }) => response.data,
     }),
 
-    // ✏️ Update Anggota Meninggal
-    updateAnggotaMeninggal: builder.mutation<
-      { code: number; message: string; data: AnggotaMeninggal },
-      { id: number; payload: UpdateAnggotaMeninggalRequest }
+    // PUT /anggota/meninggals/:id – update
+    updateMeninggal: builder.mutation<
+      MeninggalDetail,
+      { id: number; payload: MeninggalUpdatePayload }
     >({
       query: ({ id, payload }) => ({
-        url: `/anggota/meninggals/${id}?_method=PUT`,
-        method: "POST",
-        body: payload,
-      }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "AnggotaMeninggal", id },
-        "AnggotaMeninggal",
-      ],
-    }),
-
-    // ❌ Delete Anggota Meninggal
-    deleteAnggotaMeninggal: builder.mutation<
-      { code: number; message: string },
-      number
-    >({
-      query: (id) => ({
         url: `/anggota/meninggals/${id}`,
-        method: "DELETE",
+        method: "PUT",
+        body: payload,
+        headers: { "Content-Type": "application/json" },
       }),
-      invalidatesTags: (result, error, id) => [
-        { type: "AnggotaMeninggal", id },
-        "AnggotaMeninggal",
-      ],
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: MeninggalDetail;
+      }) => response.data,
     }),
 
-    // ✅ Update Status (Validate)
-    updateAnggotaMeninggalStatus: builder.mutation<
-      { code: number; message: string; data: AnggotaMeninggal },
-      { id: number; status: number }
+    // PUT /anggota/meninggals/:id/validate – approve (1) atau reject (2)
+    validateMeninggalStatus: builder.mutation<
+      MeninggalDetail,
+      { id: number; status: MeninggalValidateStatus }
     >({
       query: ({ id, status }) => ({
         url: `/anggota/meninggals/${id}/validate`,
-        method: "POST",
-        body: { status },
+        method: "PUT",
+        body: { status } as MeninggalValidatePayload,
+        headers: { "Content-Type": "application/json" },
       }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "AnggotaMeninggal", id },
-        "AnggotaMeninggal",
-      ],
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: MeninggalDetail;
+      }) => response.data,
     }),
+
+    // DELETE /anggota/meninggals/:id
+    deleteMeninggal: builder.mutation<{ code: number; message: string }, number>(
+      {
+        query: (id) => ({
+          url: `/anggota/meninggals/${id}`,
+          method: "DELETE",
+        }),
+        transformResponse: (response: {
+          code: number;
+          message: string;
+          data?: null;
+        }) => ({ code: response.code, message: response.message }),
+      }
+    ),
   }),
   overrideExisting: false,
 });
 
 export const {
-  useGetAnggotaMeninggalListQuery,
-  useGetAnggotaMeninggalByIdQuery,
-  useCreateAnggotaMeninggalMutation,
-  useUpdateAnggotaMeninggalMutation,
-  useDeleteAnggotaMeninggalMutation,
-  useUpdateAnggotaMeninggalStatusMutation,
-} = anggotaMeninggalApi;
-
+  useGetMeninggalListQuery,
+  useGetMeninggalByIdQuery,
+  useCreateMeninggalMutation,
+  useUpdateMeninggalMutation,
+  useValidateMeninggalStatusMutation,
+  useDeleteMeninggalMutation,
+} = meninggalApi;

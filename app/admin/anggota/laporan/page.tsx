@@ -49,13 +49,21 @@ export default function LaporanAnggotaAktifPage() {
     if (status !== "all")
       arr = arr.filter((it) => it.status === Number(status));
       
-    // Filter berdasarkan Query Pencarian
+    // Filter berdasarkan Query Pencarian (sesuai field terbaru: user_name, user_email, user_phone)
     if (!query.trim()) return arr;
     const q = query.toLowerCase();
     return arr.filter((it) =>
-      [it.name, it.email, it.phone, it.address, it.nik, it.npwp ?? ""].some(
-        (f) => f?.toLowerCase?.().includes?.(q)
-      )
+      [
+        it.user_name,
+        it.name,
+        it.user_email,
+        it.email,
+        it.user_phone,
+        it.phone,
+        it.address,
+        it.nik,
+        it.npwp ?? "",
+      ].some((f) => f?.toLowerCase?.().includes?.(q))
     );
   }, [list, query, status]);
 
@@ -78,6 +86,14 @@ export default function LaporanAnggotaAktifPage() {
     if (status === 1) return <Badge variant="success">APPROVED</Badge>;
     if (status === 2) return <Badge variant="destructive">REJECTED</Badge>;
     return <Badge variant="secondary">PENDING</Badge>;
+  };
+
+  const genderLabel = (gender: string | undefined) => {
+    if (!gender) return "-";
+    const g = String(gender).toUpperCase();
+    if (g === "M" || g === "L") return "Laki-laki";
+    if (g === "F" || g === "P") return "Perempuan";
+    return gender;
   };
 
   return (
@@ -195,15 +211,17 @@ export default function LaporanAnggotaAktifPage() {
                     <td className="px-4 py-2 whitespace-nowrap">
                       {item.reference}
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">{item.name}</td>
                     <td className="px-4 py-2 whitespace-nowrap">
-                      {item.email}
+                      {item.user_name ?? item.name ?? "-"}
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">
-                      {item.phone}
+                      {item.user_email ?? item.email ?? "-"}
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">
-                      {item.gender}
+                      {item.user_phone ?? item.phone ?? "-"}
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      {genderLabel(item.gender ?? undefined)}
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">
                       {statusBadge(item.status)}

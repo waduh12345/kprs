@@ -17,6 +17,7 @@ import {
 import { Anggota, DEBOUNCE_MS, MIN_CHARS } from "../form-modal/pinjaman-form";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGetAnggotaListQuery } from "@/services/koperasi-service/anggota.service";
+import type { AnggotaStatus } from "@/types/koperasi-types/anggota";
 import { Button } from "./button";
 import { ChevronDown, Loader2, Users2 } from "lucide-react";
 
@@ -42,11 +43,11 @@ export function AnggotaPicker({
   const shouldFetch = debouncedQuery.length >= MIN_CHARS || selectedId != null;
 
   const { data, isLoading, isError, refetch } = useGetAnggotaListQuery(
-    { page: 1, paginate: 200, status: 1, search: debouncedQuery } as {
-      page: number;
-      paginate: number;
-      status?: number;
-      search?: string;
+    {
+      page: 1,
+      paginate: 200,
+      status: 1 as AnggotaStatus,
+      search: debouncedQuery || undefined,
     },
     { skip: !shouldFetch, refetchOnMountOrArgChange: true }
   );

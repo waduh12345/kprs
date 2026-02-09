@@ -15,88 +15,120 @@ import {
   FileText,
   Calendar,
   Loader2,
-  CheckCircle,
-  AlertTriangle,
   List,
   Download,
   Users,
   Bell,
   Upload,
+  AlertOctagon,
 } from "lucide-react";
 import Swal from "sweetalert2";
-import { Badge } from "@/components/ui/badge";
 
-// --- IMPORT DARI SERVICE RTK QUERY ---
 import {
   useGetSimpananImportListQuery,
-  useImportSimpananExcelMutation,
-  useGetSimpananImportTemplateUrlQuery,
+  useImportSimpananTagihanExcelMutation,
+  useLazyGetSimpananTagihanTemplateQuery,
 } from "@/services/admin/simpanan/import-excel.service";
+import type {
+  SimpananImportItem,
+  SimpananTagihanImportResponse,
+  SimpananImportStatus,
+} from "@/types/admin/simpanan/import-export";
+import { getStatusBadge, getStatusIcon } from "@/components/icon-animation";
 
-// --- TYPES ---
-interface LogEntry {
-  timestamp: string;
-  activity: string;
-  status: "SUCCESS" | "ERROR" | "PENDING";
-  file_name: string;
-}
-
-interface UploadSummary {
-  file_name: string;
-  total_rekening: number;
-  total_nominal: number;
-  tanggal_upload: string;
-}
-
-// --- HELPER FUNCTIONS ---
-const formatRupiah = (number: number) => {
-  if (isNaN(number) || number === null || number === undefined) return "Rp 0";
+const formatRupiah = (value: number) => {
+  if (value == null || !Number.isFinite(value)) return "Rp 0";
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
-  }).format(number);
+  }).format(value);
 };
 
-const getStatusIcon = (status: LogEntry["status"]) => {
-  if (status === "SUCCESS")
-    return <CheckCircle className="h-4 w-4 text-green-500" />;
-  if (status === "ERROR")
-    return <AlertTriangle className="h-4 w-4 text-red-500" />;
-  return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
-};
+function mapImportStatus(
+  status: SimpananImportStatus
+): "SUCCESS" | "ERROR" | "PENDING" | "PROCESSED" {
+  const s = String(status).toLowerCase();
+  if (s === "finished") return "SUCCESS";
+  if (s === "failed") return "ERROR";
+  if (s === "queue") return "PENDING";
+  if (s === "processed") return "PROCESSED";
+  return "PENDING";
+}
 
-const getStatusBadge = (status: LogEntry["status"]) => {
-  if (status === "SUCCESS") return <Badge variant="success">SUKSES</Badge>;
-  if (status === "ERROR") return <Badge variant="destructive">ERROR</Badge>;
-  return (
-    <Badge variant="default" className="bg-blue-500 hover:bg-blue-600">
-      PENDING
-    </Badge>
-  );
-};
-
-// --- COMPONENT ---
 export default function UploadDataTagihanPage() {
-  const [isUploading, setIsUploading] = useState(false);
-  const [logData, setLogData] = useState<LogEntry[]>([]);
-  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(
-    null
-  );
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
+  const [page, setPage] = useState(1);
+  const [lastTagihanResult, setLastTagihanResult] = useState<{
+    reference: string;
+    processed: number;
+    failed: number;
+    tanggal: string;
+  } | null>(null);
 
-  const [uploadTagihan] = useImportSimpananExcelMutation(); // Use your API hook for mutation
-  const { data: logs, isLoading: isLogLoading } = useGetSimpananImportListQuery(
-    {
-      page: 1, // Adjust pagination if needed
-      paginate: 10, // Limit to 10 logs for example
-      status: 1, // Filter based on status (adjust if needed)
+  const {
+    data: importListData,
+    isLoading: isLogLoading,
+    isFetching: isLogFetching,
+    error: logError,
+    refetch: refetchLog,
+  } = useGetSimpananImportListQuery({
+    page,
+    paginate: 10,
+  });
+
+  const [importTagihanExcel, { isLoading: isUploading }] =
+    useImportSimpananTagihanExcelMutation();
+
+  const [getTagihanTemplate, { isLoading: isTemplateLoading }] =
+    useLazyGetSimpananTagihanTemplateQuery();
+
+  const logData = useMemo(() => {
+    if (!importListData?.data) return [];
+    return importListData.data.map((item: SimpananImportItem) => ({
+      id: item.id,
+      reference: item.reference,
+      date: item.date,
+      total: item.total,
+      excel_path: item.excel_path ?? "",
+      status: mapImportStatus(item.status),
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    }));
+  }, [importListData?.data]);
+
+  /** Unduh template tagihan (.xlsx) dari service GET /simpanan/import/tagihan/template */
+  const handleDownloadTemplate = async () => {
+    try {
+      const result = await getTagihanTemplate();
+      if (result.error || !result.data) {
+        const msg =
+          result.error && "message" in result.error
+            ? String(result.error.message)
+            : "Gagal mengambil template";
+        throw new Error(msg);
+      }
+      const blob = result.data;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "template-tagihan.xlsx";
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 200);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Tidak dapat mengunduh template tagihan.";
+      Swal.fire({
+        icon: "error",
+        title: "Gagal",
+        text: message,
+      });
     }
-  );
+  };
 
-  const { data: templateURL } = useGetSimpananImportTemplateUrlQuery();
-
-  // --- HANDLER UPLOAD FILE ---
   const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (isUploading) return;
     const file = e.target.files?.[0];
@@ -124,52 +156,47 @@ export default function UploadDataTagihanPage() {
 
     if (!isConfirmed) return;
 
-    setIsUploading(true);
-
     try {
-      // Upload file to the server API
-      const response = await uploadTagihan({ file }).unwrap();
+      const response = await importTagihanExcel({ file }).unwrap();
+      await refetchLog();
 
-      // On successful upload, update state and show success message
-      const newTimestamp = new Date()
-        .toISOString()
-        .replace("T", " ")
-        .substring(0, 19);
-      setUploadSummary({
-        file_name: file.name,
-        total_rekening: response.totalRekening,
-        total_nominal: response.totalNominal,
-        tanggal_upload: newTimestamp.substring(0, 10),
-      });
+      const data = response.data as SimpananTagihanImportResponse | undefined;
+      if (data) {
+        setLastTagihanResult({
+          reference: data.reference ?? "-",
+          processed: data.processed ?? 0,
+          failed: data.failed ?? 0,
+          tanggal: new Date().toISOString().slice(0, 10),
+        });
+      }
 
-      // Add to log data
-      const newLog: LogEntry = {
-        timestamp: newTimestamp,
-        activity: `File ${file.name} berhasil diunggah. Menunggu antrian pemrosesan tagihan...`,
-        status: "PENDING",
-        file_name: file.name,
-      };
-
-      setLogData((prev) => [newLog, ...prev]);
+      const detail =
+        data != null
+          ? `Referensi: ${data.reference ?? "-"}. Berhasil: ${data.processed ?? 0}, Gagal: ${data.failed ?? 0}.`
+          : "";
 
       Swal.fire({
         icon: "success",
-        title: "Unggah Berhasil!",
-        text: `File ${file.name} telah diunggah. Tagihan akan diproses di menu Proses Auto Debet.`,
+        title: "Unggah Berhasil",
+        text: response.message
+          ? `${response.message}${detail ? ` ${detail}` : ""}`
+          : `File ${file.name} telah diproses. ${detail}`,
       });
 
-      // Reset file input
       setFileToUpload(null);
-      document.getElementById("file_upload")?.setAttribute("value", "");
-    } catch (error) {
-      console.error("Gagal mengunggah file:", error);
+      const fileInput = document.getElementById("file_upload") as HTMLInputElement | null;
+      if (fileInput) fileInput.value = "";
+    } catch (err) {
+      const error = err as { data?: { message?: string }; message?: string };
+      console.error("Gagal mengunggah file:", err);
       Swal.fire({
         icon: "error",
         title: "Unggah Gagal",
-        text: "Terjadi kesalahan saat mengunggah file. Silakan coba lagi.",
+        text:
+          error.data?.message ||
+          error.message ||
+          "Terjadi kesalahan saat mengunggah file. Silakan coba lagi.",
       });
-    } finally {
-      setIsUploading(false);
     }
   };
 
@@ -184,7 +211,6 @@ export default function UploadDataTagihanPage() {
         anggota.
       </p>
 
-      {/* --- KARTU UPLOAD FILE --- */}
       <Card className="border-t-4 border-indigo-500">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl text-indigo-600">
@@ -226,14 +252,16 @@ export default function UploadDataTagihanPage() {
         </CardContent>
         <CardFooter className="pt-4 flex justify-between items-center bg-gray-50 border-t">
           <span className="text-sm text-gray-700">
-            <Download className="h-4 w-4 inline mr-1 text-green-600" />{" "}
-            <a
-              href={templateURL || "#"}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Button
+              type="button"
+              variant="link"
+              className="p-0 h-auto text-green-700 font-medium"
+              onClick={handleDownloadTemplate}
+              disabled={isTemplateLoading}
             >
-              Unduh Template Tagihan (.xlsx)
-            </a>
+              <Download className="h-4 w-4 inline mr-1" />
+              {isTemplateLoading ? "Memuat..." : "Unduh Template Tagihan (.xlsx)"}
+            </Button>
           </span>
           <span className="text-sm text-red-600 font-semibold">
             *File wajib menggunakan format template yang tersedia.
@@ -241,43 +269,34 @@ export default function UploadDataTagihanPage() {
         </CardFooter>
       </Card>
 
-      {/* --- KARTU SUMMARY --- */}
-      {uploadSummary && (
+      {lastTagihanResult && (
         <Card className="border-t-4 border-blue-500">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl text-blue-600">
-              <CheckCircle className="h-5 w-5" /> Summary Upload Tagihan
-              Terakhir
+              Summary Upload Tagihan Terakhir
             </CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-3 gap-4">
             <div>
-              <p className="text-sm text-gray-500">Nama File</p>
-              <p className="font-semibold">{uploadSummary.file_name}</p>
+              <p className="text-sm text-gray-500">Referensi</p>
+              <p className="font-semibold">{lastTagihanResult.reference}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Tanggal Unggah</p>
+              <p className="text-sm text-gray-500">Tanggal</p>
               <p className="font-semibold flex items-center gap-1">
-                <Calendar className="h-4 w-4" /> {uploadSummary.tanggal_upload}
+                <Calendar className="h-4 w-4" /> {lastTagihanResult.tanggal}
               </p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Jumlah Rekening Tertagih</p>
+              <p className="text-sm text-gray-500">Berhasil / Gagal</p>
               <p className="font-semibold text-xl flex items-center gap-1">
-                <Users className="h-5 w-5" /> {uploadSummary.total_rekening}
-              </p>
-            </div>
-            <div className="col-span-3">
-              <p className="text-sm text-gray-500">Total Nominal Tagihan</p>
-              <p className="font-extrabold text-3xl text-red-600">
-                {formatRupiah(uploadSummary.total_nominal)}
+                <Users className="h-5 w-5" /> {lastTagihanResult.processed} / {lastTagihanResult.failed}
               </p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* --- LOG RIWAYAT --- */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -289,33 +308,94 @@ export default function UploadDataTagihanPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted text-left">
               <tr>
-                <th className="px-4 py-3 w-1/4">Waktu</th>
+                <th className="px-4 py-3 w-1/5">Waktu</th>
                 <th className="px-4 py-3 w-1/6">Status</th>
-                <th className="px-4 py-3 w-1/4">Nama File</th>
-                <th className="px-4 py-3">Aktivitas/Pesan</th>
+                <th className="px-4 py-3 w-1/5">Referensi</th>
+                <th className="px-4 py-3 w-1/6">Total</th>
+                <th className="px-4 py-3 w-1/5">Dokumen</th>
               </tr>
             </thead>
             <tbody>
-              {logData.map((log, index) => (
-                <tr key={index} className="border-t hover:bg-gray-50">
-                  <td className="px-4 py-3 whitespace-nowrap text-gray-600">
-                    {log.timestamp}
+              {isLogLoading || isLogFetching ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-8 text-gray-500">
+                    <Loader2 className="h-6 w-6 animate-spin inline mr-2" />
+                    Memuat riwayat log...
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="font-semibold flex items-center gap-2">
-                      {getStatusIcon(log.status)}
-                      {getStatusBadge(log.status)}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs">
-                    {log.file_name}
-                  </td>
-                  <td className="px-4 py-3">{log.activity}</td>
                 </tr>
-              ))}
+              ) : logError ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-8 text-red-500">
+                    <AlertOctagon className="h-6 w-6 inline mr-2" />
+                    Gagal memuat data log.
+                  </td>
+                </tr>
+              ) : logData.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-8 text-gray-500">
+                    Tidak ada riwayat log yang ditemukan.
+                  </td>
+                </tr>
+              ) : (
+                logData.map((log) => (
+                  <tr key={log.id} className="border-t hover:bg-gray-50">
+                    <td className="px-4 py-3 whitespace-nowrap text-gray-600">
+                      {new Date(log.created_at).toLocaleString("id-ID")}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="font-semibold flex items-center gap-2">
+                        {getStatusIcon(log.status)}
+                        {getStatusBadge(log.status)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">{log.reference ?? "—"}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {formatRupiah(log.total)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {log.excel_path ? (
+                        <a
+                          href={log.excel_path}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
+                        >
+                          Unduh Dokumen
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </CardContent>
+        <CardFooter className="flex justify-between items-center pt-4 border-t">
+          <div className="text-sm text-gray-500">
+            Menampilkan {logData.length} dari {importListData?.total ?? 0} entri.
+          </div>
+          <div>
+            <Button
+              disabled={page === 1}
+              onClick={() => setPage((p) => p - 1)}
+              variant="outline"
+              size="sm"
+              className="mr-2"
+            >
+              Prev
+            </Button>
+            <Button
+              disabled={page === importListData?.last_page}
+              onClick={() => setPage((p) => p + 1)}
+              variant="outline"
+              size="sm"
+            >
+              Next
+            </Button>
+          </div>
+        </CardFooter>
       </Card>
     </div>
   );

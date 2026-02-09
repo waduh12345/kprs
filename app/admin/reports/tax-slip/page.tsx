@@ -290,7 +290,7 @@ export default function TaxSlipPage() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900 leading-tight">
-                  KSP TUNAS MULIA UNGGUL
+                  KSP MERAH PUTIH
                 </h1>
                 <p className="text-sm text-red-600 font-semibold tracking-wider uppercase mt-1">
                   Bukti Potong Pajak

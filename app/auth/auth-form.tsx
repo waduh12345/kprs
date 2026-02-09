@@ -37,6 +37,11 @@ import { motion } from "framer-motion";
 import { formatDateForInput } from "@/lib/format-utils";
 import type { DocumentsAnggota } from "@/types/koperasi-types/anggota";
 
+/** Form state: document bisa File (saat user pilih file) atau string | null */
+type DocumentFormItem = Omit<DocumentsAnggota, "document"> & {
+  document: string | File | null;
+};
+
 type AuthFormProps = {
   mode: "login" | "register";
 };
@@ -51,7 +56,7 @@ type RegisterError = {
 
 type MediaItem = DocumentsAnggota["media"][number];
 
-const makeEmptyDoc = (anggota_id = 0): DocumentsAnggota => ({
+const makeEmptyDoc = (anggota_id = 0): DocumentFormItem => ({
   id: 0,
   anggota_id,
   key: "",
@@ -137,7 +142,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
   const [address, setAddress] = useState("");
 
   // ===== Dokumen dinamis =====
-  const [documents, setDocuments] = useState<DocumentsAnggota[]>([
+  const [documents, setDocuments] = useState<DocumentFormItem[]>([
     makeEmptyDoc(0),
   ]);
 

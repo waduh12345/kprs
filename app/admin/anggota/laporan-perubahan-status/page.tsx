@@ -3,8 +3,11 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useGetAnggotaListQuery } from "@/services/koperasi-service/anggota.service";
-import type { AnggotaKoperasi, DocumentsAnggota } from "@/types/koperasi-types/anggota"; // Catatan: Kita mengasumsikan API ini masih digunakan
+import {
+  useGetAnggotaListQuery,
+  useGetAnggotaStatusLogsQuery,
+} from "@/services/koperasi-service/anggota.service";
+import type { AnggotaKoperasi } from "@/types/koperasi-types/anggota";
 import { Badge } from "@/components/ui/badge";
 import { ProdukToolbar } from "@/components/ui/produk-toolbar";
 import { useRouter } from "next/navigation";
@@ -14,126 +17,35 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { HistoryIcon, FileDown } from "lucide-react";
+import { HistoryIcon, FileDown, ArrowRight, User, Clock } from "lucide-react";
+import { displayDate } from "@/lib/format-utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
-// Karena data riwayat status biasanya berbeda, kita membuat tipe data simulasi.
-// Interface ini mewarisi tipe data dari AnggotaKoperasi
-interface StatusChangeReportItem extends AnggotaKoperasi {
-  previous_status: number;
-  changed_at: string;
+const ITEMS_PER_PAGE = 10;
+
+function statusBadge(status: number) {
+  if (status === 1) return <Badge variant="success">APPROVED</Badge>;
+  if (status === 2) return <Badge variant="destructive">REJECTED</Badge>;
+  return <Badge variant="secondary">PENDING</Badge>;
 }
-
-// Data Dummy untuk mensimulasikan riwayat perubahan status
-const dummyStatusHistory: StatusChangeReportItem[] = [
-  {
-    id: 1,
-    user_id: 1,
-    reference: "A001",
-    ref_number: 1,
-    name: "Budi Santoso",
-    email: "budi@mail.com",
-    phone: "0812...",
-    gender: "Laki-laki",
-    address: "Jl. Mawar",
-    nik: "123",
-    npwp: "123",
-
-    birth_date: "1990-01-01",
-    birth_place: "Jakarta",
-
-    status: 1,
-    created_at: "2024-01-01",
-    updated_at: "2024-01-02",
-
-    nip: null,
-    unit_kerja: null,
-    jabatan: null,
-
-    documents: [] as DocumentsAnggota[],
-
-    previous_status: 0,
-    changed_at: "2024-10-01",
-    type: ""
-  },
-  {
-    id: 2,
-    user_id: 2,
-    reference: "A002",
-    ref_number: 1,
-    name: "Siti Rahayu",
-    email: "siti@mail.com",
-    phone: "0813...",
-    gender: "Perempuan",
-    address: "Jl. Anggrek",
-    nik: "456",
-    npwp: "456",
-
-    birth_date: "1995-05-15",
-    birth_place: "Bandung",
-
-    status: 2,
-    created_at: "2024-01-05",
-    updated_at: "2024-01-10",
-
-    nip: null,
-    unit_kerja: null,
-    jabatan: null,
-
-    documents: [] as DocumentsAnggota[],
-
-    previous_status: 1,
-    changed_at: "2024-10-15",
-    type: ""
-  },
-  {
-    id: 3,
-    user_id: 3,
-    reference: "A003",
-    ref_number: 1,
-    name: "Joko Widodo",
-    email: "joko@mail.com",
-    phone: "0811...",
-    gender: "Laki-laki",
-    address: "Jl. Melati",
-    nik: "789",
-    npwp: "789",
-
-    birth_date: "1988-11-20",
-    birth_place: "Surabaya",
-
-    status: 1,
-    created_at: "2024-01-03",
-    updated_at: "2024-01-04",
-
-    nip: null,
-    unit_kerja: null,
-    jabatan: null,
-
-    documents: [] as DocumentsAnggota[],
-
-    previous_status: 0,
-    changed_at: "2024-09-20",
-    type: ""
-  },
-];
-
 
 export default function LaporanPerubahanStatusPage() {
   const router = useRouter();
-
-  const itemsPerPage = 10;
   const [currentPage, setCurrentPage] = useState(1);
   const [query, setQuery] = useState("");
-  // Tidak ada filter status di sini, tetapi kita bisa menambahkan filter tanggal
-  const [dateRange, setDateRange] = useState({ start: "", end: "" });
-
+  const [selectedAnggotaId, setSelectedAnggotaId] = useState<number | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
-  // Catatan: Di implementasi nyata, Anda akan menggunakan endpoint API yang benar
-  const { isLoading: isLoadingData } = useGetAnggotaListQuery(
+  const { data, isLoading } = useGetAnggotaListQuery(
     {
       page: currentPage,
-      paginate: itemsPerPage,
+      paginate: ITEMS_PER_PAGE,
     },
     {
       refetchOnMountOrArgChange: true,
@@ -142,140 +54,133 @@ export default function LaporanPerubahanStatusPage() {
     }
   );
 
-  // Menggunakan data dummy karena tidak ada endpoint khusus riwayat status
-  const list: StatusChangeReportItem[] = dummyStatusHistory;
-  const lastPage = 1; // Sesuaikan dengan pagination dummy
+  const list = useMemo(() => data?.data ?? [], [data]);
+  const lastPage = useMemo(() => data?.last_page ?? 1, [data]);
+  const total = useMemo(() => data?.total ?? 0, [data]);
 
   const filteredList = useMemo(() => {
-    // PERBAIKAN: Mengganti 'let arr' menjadi 'const arr'
-    const arr = list;
-
-    // Filter berdasarkan Query Pencarian
-    if (!query.trim()) return arr;
+    if (!query.trim()) return list;
     const q = query.toLowerCase();
-    return arr.filter((it) =>
-      // Menggunakan String(it.id) agar id (yang sekarang number) bisa dicari
-      [String(it.id), it.name, it.email, it.phone, it.reference].some((f) =>
-        f?.toLowerCase?.().includes?.(q)
-      )
+    return list.filter((it: AnggotaKoperasi) =>
+      [
+        it.reference,
+        it.user_name,
+        it.name,
+        it.user_email,
+        it.email,
+        it.user_phone,
+        it.phone,
+      ].some((f) => String(f ?? "").toLowerCase().includes(q))
     );
-  }, [list, query, dateRange]);
+  }, [list, query]);
 
   const handleExportExcel = () => {
     setIsExporting(true);
-    // TODO: Implementasi logika pemanggilan API Export Laporan Perubahan Status
-    console.log("Mengekspor Laporan Perubahan Status...");
-
     setTimeout(() => {
       setIsExporting(false);
       alert("Permintaan export laporan perubahan status telah diproses.");
     }, 1500);
   };
 
-  const statusBadge = (status: number) => {
-    if (status === 1) return <Badge variant="success">APPROVED</Badge>;
-    if (status === 2) return <Badge variant="destructive">REJECTED</Badge>;
-    return <Badge variant="secondary">PENDING</Badge>;
-  };
-
   return (
-    <div className="p-6 space-y-6">
-      <h2 className="text-2xl font-bold mb-4">
-        Laporan Perubahan Status Anggota
-      </h2>
+    <div className="p-6 space-y-6 max-w-6xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+          Laporan Perubahan Status Anggota
+        </h1>
+      </div>
 
       <ProdukToolbar
         onSearchChange={(q: string) => setQuery(q)}
-        // Nonaktifkan filter status yang lama
         enableStatusFilter={false}
-        // Hapus tombol Add/Import/Template
         showAddButton={false}
         showTemplateCsvButton={false}
         enableImport={false}
-        // Tambahkan tombol Export
+        enableExport
         onExportExcel={handleExportExcel}
         exportLabel={isExporting ? "Memproses..." : "Export Laporan"}
         exportIcon={<FileDown className="h-4 w-4 mr-2" />}
       />
 
-      <Card>
+      <Card className="overflow-hidden border border-gray-200/80 shadow-sm">
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted text-left">
+            <thead className="bg-muted/60 text-left">
               <tr>
-                <th className="px-4 py-2">Aksi</th>
-                <th className="px-4 py-2">Nomor Anggota</th>
-                <th className="px-4 py-2">Nama</th>
-                <th className="px-4 py-2">Tgl. Perubahan</th>
-                <th className="px-4 py-2">Status Sebelumnya</th>
-                <th className="px-4 py-2">Status Baru</th>
+                <th className="px-4 py-3 font-medium text-muted-foreground">Aksi</th>
+                <th className="px-4 py-3 font-medium">Nomor Anggota</th>
+                <th className="px-4 py-3 font-medium">Nama</th>
+                <th className="px-4 py-3 font-medium">Status Saat Ini</th>
+                <th className="px-4 py-3 font-medium">Riwayat Status</th>
               </tr>
             </thead>
             <tbody>
-              {isLoadingData ? (
+              {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="text-center p-4">
+                  <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
                     Memuat data...
                   </td>
                 </tr>
               ) : filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center p-4">
-                    Tidak ada data perubahan status yang sesuai dengan filter.
+                  <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                    Tidak ada data anggota yang sesuai dengan filter.
                   </td>
                 </tr>
               ) : (
                 filteredList.map((item) => (
-                  <tr key={item.id} className="border-t">
-                    <td className="px-4 py-2">
+                  <tr
+                    key={item.id}
+                    className="border-t border-gray-100 hover:bg-muted/30 transition-colors"
+                  >
+                    <td className="px-4 py-3">
                       <ActionsGroup
-                        // Ubah handleDetail ke mode detail
                         handleDetail={() =>
                           router.push(
                             `/admin/anggota/add-data?mode=detail&id=${item.id}`
                           )
                         }
-                        // Hapus showEdit/showDelete jika ActionsGroup tidak menerimanya secara eksplisit
-                        // atau untuk menjaga agar hanya tombol detail/history yang muncul
-                        // showEdit={false}
-                        // showDelete={false}
                         additionalActions={
-                          <div className="flex items-center gap-2">
-                            {/* History Anggota */}
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    router.push(
-                                      `/admin/anggota/history?anggota_id=${item.id}`
-                                    )
-                                  }
-                                >
-                                  <HistoryIcon className="size-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Riwayat Anggota</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </div>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  router.push(
+                                    `/admin/anggota/history?anggota_id=${item.id}`
+                                  )
+                                }
+                              >
+                                <HistoryIcon className="size-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Riwayat Anggota</p>
+                            </TooltipContent>
+                          </Tooltip>
                         }
                       />
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
+                    <td className="px-4 py-3 whitespace-nowrap font-mono text-xs">
                       {item.reference}
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">{item.name}</td>
-                    <td className="px-4 py-2 whitespace-nowrap font-medium">
-                      {item.changed_at}
+                    <td className="px-4 py-3 whitespace-nowrap font-medium">
+                      {item.user_name ?? item.name ?? "—"}
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
-                      {statusBadge(item.previous_status)}
-                    </td>
-                    <td className="px-4 py-2 whitespace-nowrap">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       {statusBadge(item.status)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5"
+                        onClick={() => setSelectedAnggotaId(item.id)}
+                      >
+                        <Clock className="size-3.5" />
+                        Lihat log status
+                      </Button>
                     </td>
                   </tr>
                 ))
@@ -284,15 +189,14 @@ export default function LaporanPerubahanStatusPage() {
           </table>
         </CardContent>
 
-        {/* Pagination */}
-        <div className="p-4 flex items-center justify-between bg-muted">
-          <div className="text-sm">
-            Halaman <strong>{currentPage}</strong> dari{" "}
-            <strong>{lastPage}</strong>
-          </div>
+        <div className="p-4 flex items-center justify-between bg-muted/30 border-t">
+          <p className="text-sm text-muted-foreground">
+            Menampilkan {filteredList.length} dari {total} anggota
+          </p>
           <div className="flex gap-2">
             <Button
               variant="outline"
+              size="sm"
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => p - 1)}
             >
@@ -300,6 +204,7 @@ export default function LaporanPerubahanStatusPage() {
             </Button>
             <Button
               variant="outline"
+              size="sm"
               disabled={currentPage >= lastPage}
               onClick={() => setCurrentPage((p) => p + 1)}
             >
@@ -308,6 +213,99 @@ export default function LaporanPerubahanStatusPage() {
           </div>
         </div>
       </Card>
+
+      {/* Modal log status per anggota */}
+      <Dialog
+        open={selectedAnggotaId !== null}
+        onOpenChange={(open) => !open && setSelectedAnggotaId(null)}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <StatusLogPanel
+            anggotaId={selectedAnggotaId}
+            onClose={() => setSelectedAnggotaId(null)}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function StatusLogPanel({
+  anggotaId,
+  onClose,
+}: {
+  anggotaId: number | null;
+  onClose: () => void;
+}) {
+  const { data: logs, isLoading } = useGetAnggotaStatusLogsQuery(anggotaId!, {
+    skip: !anggotaId,
+  });
+
+  const list = useMemo(() => logs ?? [], [logs]);
+
+  if (!anggotaId) return null;
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Clock className="size-5 text-muted-foreground" />
+          Riwayat Perubahan Status
+        </DialogTitle>
+        <DialogDescription>
+          Log perubahan status anggota (dari API detail anggota).
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="mt-2 -mx-1">
+        {isLoading ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            Memuat riwayat...
+          </div>
+        ) : list.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground rounded-lg bg-muted/30">
+            Belum ada riwayat perubahan status untuk anggota ini.
+          </div>
+        ) : (
+          <ul className="space-y-0">
+            {list.map((log, index) => (
+              <li
+                key={log.id}
+                className="relative flex gap-4 py-4 px-3 rounded-lg hover:bg-muted/30 transition-colors"
+              >
+                {index < list.length - 1 && (
+                  <div
+                    className="absolute left-[19px] top-10 bottom-0 w-px bg-border"
+                    aria-hidden
+                  />
+                )}
+                <div className="relative z-0 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-background">
+                  <ArrowRight className="size-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {statusBadge(log.from_status)}
+                    <ArrowRight className="size-4 text-muted-foreground shrink-0" />
+                    {statusBadge(log.to_status)}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Clock className="size-3" />
+                      {displayDate(log.created_at)}
+                    </span>
+                    {log.changed_by_name && (
+                      <span className="flex items-center gap-1">
+                        <User className="size-3" />
+                        {log.changed_by_name}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
   );
 }

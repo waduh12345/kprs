@@ -11,81 +11,49 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Upload,
-  FileText,
-  Calendar,
-  Loader2,
-  CheckCircle,
-  AlertTriangle,
-  List,
-  Download,
-  Users,
-  AlertOctagon,
-  Zap,
-} from "lucide-react";
+import { Upload, FileText, Loader2, List, AlertOctagon, Download } from "lucide-react";
 import Swal from "sweetalert2";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 
-// --- IMPORT DARI SERVICE RTK QUERY ---
 import {
   useGetSimpananImportListQuery,
   useImportSimpananExcelMutation,
-  useGetSimpananImportTemplateUrlQuery,
+  useLazyGetSimpananTemplateQuery,
 } from "@/services/admin/simpanan/import-excel.service";
-import type { Simpanan } from "@/types/admin/simpanan";
+import type {
+  SimpananImportItem,
+  SimpananImportResponse,
+  SimpananImportStatus,
+} from "@/types/admin/simpanan/import-export";
 import { getStatusBadge, getStatusIcon } from "@/components/icon-animation";
 
-// --- TYPES LOKAL UNTUK TAMPILAN ---
-interface LogEntry {
-  id: number;
-  timestamp: string;
-  activity: string;
-  status: "SUCCESS" | "ERROR" | "PENDING" | "PROCESSED";
-  file_name: string;
-  excel_path: string; // Menambahkan excel_path untuk tombol download
-}
-
-interface UploadSummary {
-  file_name: string;
-  total_rekening: number;
-  total_nominal: number;
-  tanggal_upload: string;
-}
-
-// --- HELPER FUNCTIONS ---
-const formatRupiah = (number: number) => {
-  if (isNaN(number) || number === null || number === undefined) return "Rp 0";
+const formatRupiah = (value: number) => {
+  if (value == null || !Number.isFinite(value)) return "Rp 0";
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
-  }).format(number);
+  }).format(value);
 };
 
-// Map status API ke status lokal
-const mapStatusToLog = (
-  status: Simpanan["status"]
-): "SUCCESS" | "ERROR" | "PENDING" | "PROCESSED" => {
-  // Asumsi mapping status API:
-  if (status === 2) return "SUCCESS";
-  if (status === 3) return "ERROR";
-  if (status === 1) return "PENDING";
-  return "PROCESSED";
-};
+/** Map status API (queue | processed | finished | failed) ke status tampilan */
+function mapImportStatus(
+  status: SimpananImportStatus
+): "SUCCESS" | "ERROR" | "PENDING" | "PROCESSED" {
+  const s = String(status).toLowerCase();
+  if (s === "finished") return "SUCCESS";
+  if (s === "failed") return "ERROR";
+  if (s === "queue") return "PENDING";
+  if (s === "processed") return "PROCESSED";
+  return "PENDING";
+}
 
-// --- KOMPONEN UTAMA ---
 export default function UploadDataSimpananPage() {
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
-  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(
-    null
-  );
-  const [page, setPage] = useState(1); // State untuk pagination
+  const [page, setPage] = useState(1);
 
-  // --- RTK QUERY HOOKS ---
   const {
-    data: simpananListData,
+    data: importListData,
     isLoading: isLogLoading,
     isFetching: isLogFetching,
     error: logError,
@@ -93,30 +61,59 @@ export default function UploadDataSimpananPage() {
   } = useGetSimpananImportListQuery({
     page,
     paginate: 10,
-    status: 1,
   });
 
-  const [importSimpanan, { isLoading: isUploading }] =
+  const [importSimpananExcel, { isLoading: isUploading }] =
     useImportSimpananExcelMutation();
 
-  const { data: templateURL } = useGetSimpananImportTemplateUrlQuery();
+  const [getSimpananTemplate, { isLoading: isTemplateLoading }] =
+    useLazyGetSimpananTemplateQuery();
 
-  const logData: LogEntry[] = useMemo(() => {
-    if (!simpananListData?.data) return [];
-
-    return simpananListData.data.map((simpanan) => ({
-      id: simpanan.id,
-      timestamp: new Date(simpanan.updated_at).toLocaleString("id-ID"),
-      file_name: simpanan.reference || simpanan.order_id || "N/A",
-      excel_path: simpanan.excel_path || "", // Menambahkan excel_path
-      status: mapStatusToLog(simpanan.status),
-      activity: `Pembukuan Simpanan (${
-        simpanan.category_name
-      }). Nominal: ${formatRupiah(simpanan.nominal)}. Status: ${
-        simpanan.paid_at ? "Telah Dibayar" : "Menunggu Proses"
-      }`,
+  const logData = useMemo(() => {
+    if (!importListData?.data) return [];
+    return importListData.data.map((item: SimpananImportItem) => ({
+      id: item.id,
+      reference: item.reference,
+      date: item.date,
+      total: item.total,
+      excel_path: item.excel_path ?? "",
+      status: mapImportStatus(item.status),
+      created_at: item.created_at,
+      updated_at: item.updated_at,
     }));
-  }, [simpananListData]);
+  }, [importListData?.data]);
+
+  /** Unduh template setoran (.xlsx) dari service GET /simpanan/import/template */
+  const handleDownloadTemplate = async () => {
+    try {
+      const result = await getSimpananTemplate();
+      if (result.error || !result.data) {
+        const msg =
+          result.error && "message" in result.error
+            ? String(result.error.message)
+            : "Gagal mengambil template";
+        throw new Error(msg);
+      }
+      const blob = result.data;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "template-simpanan.xlsx";
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 200);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Tidak dapat mengunduh template.";
+      Swal.fire({
+        icon: "error",
+        title: "Gagal",
+        text: message,
+      });
+    }
+  };
 
   const handleUploadFile = async () => {
     if (isUploading || !fileToUpload) return;
@@ -132,11 +129,11 @@ export default function UploadDataSimpananPage() {
     }
 
     const { isConfirmed } = await Swal.fire({
-      title: "Konfirmasi Unggah Data Simpanan",
+      title: "Konfirmasi Unggah Data Setoran Simpanan",
       html: `
         Anda akan mengunggah file: 
         <div class="mt-2 font-bold">${file.name}</div>
-        <p class="mt-2 text-sm text-gray-600">Pastikan file sesuai format template yang ditentukan.</p>
+        <p class="mt-2 text-sm text-gray-600">Pastikan file sesuai format yang ditentukan.</p>
       `,
       icon: "info",
       showCancelButton: true,
@@ -146,39 +143,29 @@ export default function UploadDataSimpananPage() {
     if (!isConfirmed) return;
 
     try {
-      const response = await importSimpanan({ file }).unwrap();
+      const response = await importSimpananExcel({ file }).unwrap();
+      await refetchLog();
 
-      const newTimestamp = new Date()
-        .toISOString()
-        .replace("T", " ")
-        .substring(0, 19);
-      setUploadSummary({
-        file_name: file.name,
-        total_rekening: 0,
-        total_nominal: 0,
-        tanggal_upload: newTimestamp.substring(0, 10),
-      });
-
-      refetchLog();
+      const data = response.data as SimpananImportResponse | undefined;
+      const detail =
+        data != null
+          ? `Referensi: ${data.reference ?? "-"}. Berhasil: ${data.processed ?? 0}, Gagal: ${data.failed ?? 0}.`
+          : "";
 
       Swal.fire({
         icon: "success",
-        title: "Unggah Berhasil!",
-        text:
-          response.message ||
-          `File ${file.name} telah diunggah. Cek riwayat log untuk status pembukuan.`,
+        title: "Unggah Berhasil",
+        text: response.message
+          ? `${response.message}${detail ? ` ${detail}` : ""}`
+          : `File ${file.name} telah diproses. ${detail}`,
       });
 
       setFileToUpload(null);
-      const fileInput = document.getElementById(
-        "file_upload"
-      ) as HTMLInputElement;
+      const fileInput = document.getElementById("file_upload") as HTMLInputElement | null;
       if (fileInput) fileInput.value = "";
     } catch (err) {
       const error = err as { data?: { message?: string }; message?: string };
-
       console.error("Gagal mengunggah file:", error);
-
       Swal.fire({
         icon: "error",
         title: "Unggah Gagal",
@@ -245,19 +232,16 @@ export default function UploadDataSimpananPage() {
         </CardContent>
         <CardFooter className="pt-4 flex justify-between items-center bg-gray-50 border-t">
           <span className="text-sm text-gray-700">
-            <Download className="h-4 w-4 inline mr-1 text-green-600" />
-            {templateURL ? (
-              <a
-                href={templateURL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline text-green-700 font-medium"
-              >
-                Unduh Template File (.csv)
-              </a>
-            ) : (
-              "Template File (.csv) - Loading..."
-            )}
+            <Button
+              type="button"
+              variant="link"
+              className="p-0 h-auto text-green-700 font-medium"
+              onClick={handleDownloadTemplate}
+              disabled={isTemplateLoading}
+            >
+              <Download className="h-4 w-4 inline mr-1" />
+              {isTemplateLoading ? "Memuat..." : "Unduh Template Setoran (.xlsx)"}
+            </Button>
           </span>
           <span className="text-sm text-red-600 font-semibold">
             *File wajib menggunakan format template yang tersedia.
@@ -279,28 +263,29 @@ export default function UploadDataSimpananPage() {
               <tr>
                 <th className="px-4 py-3 w-1/5">Waktu</th>
                 <th className="px-4 py-3 w-1/6">Status</th>
+                <th className="px-4 py-3 w-1/5">Referensi</th>
+                <th className="px-4 py-3 w-1/6">Total</th>
                 <th className="px-4 py-3 w-1/5">Dokumen</th>
-                <th className="px-4 py-3">Aktivitas/Pesan</th>
               </tr>
             </thead>
             <tbody>
               {isLogLoading || isLogFetching ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-gray-500">
+                  <td colSpan={5} className="text-center py-8 text-gray-500">
                     <Loader2 className="h-6 w-6 animate-spin inline mr-2" />
                     Memuat riwayat log...
                   </td>
                 </tr>
               ) : logError ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-red-500">
+                  <td colSpan={5} className="text-center py-8 text-red-500">
                     <AlertOctagon className="h-6 w-6 inline mr-2" />
                     Gagal memuat data log.
                   </td>
                 </tr>
               ) : logData.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-gray-500">
+                  <td colSpan={5} className="text-center py-8 text-gray-500">
                     Tidak ada riwayat log yang ditemukan.
                   </td>
                 </tr>
@@ -308,7 +293,7 @@ export default function UploadDataSimpananPage() {
                 logData.map((log) => (
                   <tr key={log.id} className="border-t hover:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap text-gray-600">
-                      {log.timestamp}
+                      {new Date(log.created_at).toLocaleString("id-ID")}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="font-semibold flex items-center gap-2">
@@ -316,17 +301,24 @@ export default function UploadDataSimpananPage() {
                         {getStatusBadge(log.status)}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <a
-                        href={log.excel_path}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
-                      >
-                        Unduh Dokumen
-                      </a>
+                    <td className="px-4 py-3">{log.reference ?? "—"}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {formatRupiah(log.total)}
                     </td>
-                    <td className="px-4 py-3">{log.activity}</td>
+                    <td className="px-4 py-3">
+                      {log.excel_path ? (
+                        <a
+                          href={log.excel_path}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all bg-primary text-primary-foreground shadow-xs hover:bg-primary/90"
+                        >
+                          Unduh Dokumen
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                   </tr>
                 ))
               )}
@@ -336,8 +328,7 @@ export default function UploadDataSimpananPage() {
         {/* Kontrol Pagination (Jika total data > paginate) */}
         <CardFooter className="flex justify-between items-center pt-4 border-t">
           <div className="text-sm text-gray-500">
-            Menampilkan {logData.length} dari {simpananListData?.total || 0}{" "}
-            entri.
+            Menampilkan {logData.length} dari {importListData?.total ?? 0} entri.
           </div>
           <div>
             <Button
@@ -350,7 +341,7 @@ export default function UploadDataSimpananPage() {
               Prev
             </Button>
             <Button
-              disabled={page === simpananListData?.last_page}
+              disabled={page === importListData?.last_page}
               onClick={() => setPage((p) => p + 1)}
               variant="outline"
               size="sm"

@@ -5,23 +5,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { displayDate } from "@/lib/format-utils";
+import { Badge } from "@/components/ui/badge";
+import { displayDate, formatRupiahWithRp } from "@/lib/format-utils";
 import QRCode from "react-qr-code";
 
 import { useGetAnggotaByIdQuery } from "@/services/koperasi-service/anggota.service";
 import { useGetSimpananListQuery } from "@/services/admin/simpanan/simpanan.service";
 import { useGetPinjamanListQuery } from "@/services/admin/pinjaman.service";
 import { useGetTransactionListQuery } from "@/services/admin/transaction.service";
-
-type SimpananRow = {
-  id: number;
-  tanggal: string;
-  reference: string;
-  kategori: string;
-  nominal: number;
-  status: number;
-  pembayaran: string;
-};
+import type { AnggotaKoperasi } from "@/types/koperasi-types/anggota";
+import type { Simpanan } from "@/types/admin/simpanan";
 
 type PinjamanRow = {
   id: number;
@@ -70,45 +63,77 @@ function formatRupiah(n: number) {
   }
 }
 
-function Badge({
-  color = "gray",
-  children,
-}: {
-  color?: "gray" | "green" | "red" | "amber" | "blue";
-  children: React.ReactNode;
-}) {
-  const map: Record<typeof color, string> = {
-    gray: "bg-gray-100 text-gray-700",
-    green: "bg-emerald-100 text-emerald-700",
-    red: "bg-red-100 text-red-700",
-    amber: "bg-amber-100 text-amber-700",
-    blue: "bg-sky-100 text-sky-700",
-  };
-  return (
-    <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs ${map[color]}`}
-    >
-      {children}
-    </span>
-  );
+function statusBadgeSimpanan(code: number) {
+  if (code === 1) return <Badge variant="success">Sukses</Badge>;
+  if (code === 2) return <Badge variant="destructive">Gagal</Badge>;
+  return <Badge variant="secondary">Pending</Badge>;
 }
 
-function statusBadgeSimpanan(code: number) {
-  if (code === 1) return <Badge color="green">Sukses</Badge>;
-  if (code === 2) return <Badge color="red">Gagal</Badge>;
-  return <Badge>Pending</Badge>;
+function statusBadgeAnggota(code: number) {
+  if (code === 1) return <Badge variant="success">APPROVED</Badge>;
+  if (code === 2) return <Badge variant="destructive">REJECTED</Badge>;
+  return <Badge variant="secondary">PENDING</Badge>;
 }
 
 function statusBadgePinjaman(code: number) {
-  if (code === 1) return <Badge color="green">APPROVED</Badge>;
-  if (code === 2) return <Badge color="red">REJECTED</Badge>;
-  return <Badge>Pending</Badge>;
+  if (code === 1) return <Badge variant="success">APPROVED</Badge>;
+  if (code === 2) return <Badge variant="destructive">REJECTED</Badge>;
+  return <Badge variant="secondary">Pending</Badge>;
 }
 
 function statusBadgeTransaksi(code: number) {
-  if (code === 2) return <Badge color="green">Selesai</Badge>;
-  if (code === -1) return <Badge color="red">Dibatalkan</Badge>;
-  return <Badge color="amber">Diproses</Badge>;
+  if (code === 2) return <Badge variant="success">Selesai</Badge>;
+  if (code === -1) return <Badge variant="destructive">Dibatalkan</Badge>;
+  return <Badge variant="secondary">Diproses</Badge>;
+}
+
+function genderLabel(gender: string | null | undefined) {
+  if (!gender) return "—";
+  const g = String(gender).toUpperCase();
+  if (g === "M" || g === "L") return "Laki-laki";
+  if (g === "F" || g === "P") return "Perempuan";
+  return gender;
+}
+
+function getAnggotaDisplay(anggota: AnggotaKoperasi | undefined) {
+  if (!anggota) return { name: "—", email: "—", phone: "—", gender: "—", birthDate: "—", birthPlace: "—", nik: "—", npwp: "—", address: "—" };
+  const name = anggota.user_name ?? anggota.name ?? anggota.individu?.name ?? anggota.perusahaan?.name ?? "—";
+  const email = anggota.user_email ?? anggota.email ?? anggota.individu?.email ?? anggota.perusahaan?.email ?? "—";
+  const phone = anggota.user_phone ?? anggota.phone ?? anggota.individu?.phone ?? anggota.perusahaan?.phone ?? "—";
+  const gender = genderLabel(anggota.gender ?? anggota.individu?.gender ?? null);
+  const birthDate = displayDate(anggota.birth_date ?? anggota.individu?.birth_date ?? null) || "—";
+  const birthPlace = anggota.birth_place ?? anggota.individu?.birth_place ?? "—";
+  const nik = anggota.nik ?? anggota.individu_nik ?? anggota.individu?.nik ?? "—";
+  const npwp = anggota.npwp ?? anggota.individu_npwp ?? anggota.perusahaan_npwp ?? anggota.perusahaan?.npwp ?? "—";
+  const address = anggota.address ?? anggota.individu?.address ?? anggota.perusahaan?.address ?? "—";
+  return { name, email, phone, gender, birthDate, birthPlace, nik, npwp, address };
+}
+
+function RowLabel({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex justify-between items-center text-sm gap-2">
+      <span className="text-muted-foreground shrink-0">{label}</span>
+      <span className="font-medium text-right truncate">{value ?? "—"}</span>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground mb-0.5">{label}</div>
+      <div className="font-medium text-sm">{value ?? "—"}</div>
+    </div>
+  );
 }
 
 function TablePagination({
@@ -195,7 +220,19 @@ function HistoryPageInner() {
     { skip: !userId }
   );
 
-  /* ====== NORMALISASI SESUAI RESPONSE SAMPLE ====== */
+  /* ====== SIMPANAN: typed dari service (data = Simpanan[]) ====== */
+  const simpananList: Simpanan[] = useMemo(
+    () => simpananRes?.data ?? [],
+    [simpananRes?.data]
+  );
+  const simpananTotal = simpananRes?.total ?? 0;
+
+  function simpananPaymentLabel(s: Simpanan): string {
+    const ch = s.payment?.channel ?? s.payment_channel ?? s.payment_method;
+    return ch ? String(ch).toUpperCase() : "—";
+  }
+
+  /* ====== NORMALISASI untuk Pinjaman & Transaksi (response Laravel-style) ====== */
   const takePage = (
     raw: unknown
   ): { list: ReadonlyArray<Record<string, unknown>>; total: number } => {
@@ -207,33 +244,6 @@ function HistoryPageInner() {
     const total = toNum(inner.total) ?? arr.length;
     return { list: arr, total };
   };
-
-  // SIMPANAN
-  const simpananParsed = useMemo(() => takePage(simpananRes), [simpananRes]);
-  const simpananList: SimpananRow[] = useMemo(
-    () =>
-      simpananParsed.list.map((row, i) => {
-        const r = rec(row);
-        const payment = rec(r.payment);
-        const channel =
-          toStr(payment.channel) ||
-          toStr(payment.payment_type) ||
-          toStr(payment.driver) ||
-          "";
-        return {
-          id: toNum(r.id) ?? i + 1,
-          tanggal:
-            toStr(r.date) || toStr(r.created_at) || toStr(r.updated_at) || "",
-          reference: toStr(r.reference) || "-",
-          kategori: toStr(r.category_name) || "-",
-          nominal: toNum(r.nominal) ?? 0,
-          status: toNum(r.status) ?? 0,
-          pembayaran: channel ? channel.toUpperCase() : "-",
-        };
-      }),
-    [simpananParsed.list]
-  );
-  const simpananTotal = simpananParsed.total;
 
   // PINJAMAN
   const pinjamanParsed = useMemo(() => takePage(pinjamanRes), [pinjamanRes]);
@@ -289,204 +299,103 @@ function HistoryPageInner() {
   const handleTabChange = (v: string) =>
     setTab(v as "simpanan" | "pinjaman" | "pembayaran");
 
+  const display = getAnggotaDisplay(anggota);
+
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full max-w-6xl mx-auto space-y-6 p-4 sm:p-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+          Riwayat Anggota
+        </h1>
+        <Button variant="outline" onClick={() => router.back()}>
+          Kembali
+        </Button>
+      </div>
+
       {/* ====== TOP: KARTU & BIODATA (2 kolom) ====== */}
-      <div className="grid grid-cols-12 gap-6 items-stretch">
-        {/* LEFT: ID CARD STYLE */}
-        <div className="col-span-12 lg:col-span-5">
-          <Card className="relative overflow-hidden p-0 h-full min-h[460px] bg-white">
-            {/* Strap & slot lanyard */}
-            <div className="absolute left-1/2 -translate-x-1/2 -top-4 h-8 w-28 bg-neutral-200 rounded-b-lg shadow" />
-            <div className="absolute left-1/2 -translate-x-1/2 top-5 h-6 w-24 rounded-full bg-white/90 shadow" />
-
-            {/* Top diagonal banner (merah) */}
-            <div className="relative h-40">
-              <div className="absolute inset-0 -skew-y-6 origin-top-left bg-gradient-to-r from-rose-600 via-red-600 to-rose-700" />
-              <div className="absolute -bottom-10 -left-6 right-0 h-24 rotate-[-12deg] bg-white/95" />
-            </div>
-
-            {/* Foto bulat */}
-            <div className="relative -mt-20 flex justify-center">
-              <div className="relative">
-                <div className="absolute -inset-8 rounded-full bg-gradient-to-tr from-rose-600 to-red-700 opacity-25" />
-                <div className="relative p-1 rounded-full bg-gradient-to-tr from-rose-500 to-red-600">
-                  <img
-                    src="https://i.pinimg.com/1200x/4c/85/31/4c8531dbc05c77cb7a5893297977ac89.jpg"
-                    alt="Foto Anggota"
-                    className="w-28 h-28 rounded-full object-cover ring-4 ring-white shadow-md"
-                  />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* LEFT: Kartu anggota (ringkas) */}
+        <div className="lg:col-span-5">
+          <Card className="overflow-hidden border border-gray-200/80 shadow-sm">
+            <div className="bg-gradient-to-br from-rose-600 to-red-700 px-5 py-6">
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-full bg-white/20 flex items-center justify-center text-white text-2xl font-bold shrink-0">
+                  {display.name.charAt(0).toUpperCase() || "?"}
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-white truncate max-w-[200px]">
+                    {display.name}
+                  </h2>
+                  <p className="text-rose-100 text-sm">
+                    No. Anggota: {anggota?.reference ?? "—"}
+                  </p>
+                  {anggota && statusBadgeAnggota(anggota.status)}
                 </div>
               </div>
             </div>
-
-            {/* Info */}
-            <div className="px-5 pt-3 pb-6">
-              <div className="text-center">
-                <h3 className="text-lg font-semibold">
-                  {anggota?.name ?? "-"}
-                </h3>
-                <p className="text-rose-600 text-xs font-medium">
-                  Anggota Koperasi
-                </p>
-              </div>
-
-              <div className="mt-5 grid grid-cols-12 gap-3 text-[13.5px] leading-5">
-                <div className="col-span-12 space-y-2">
-                  <div className="flex items-center">
-                    <span className="w-16 text-muted-foreground">ID</span>
-                    <span className="mx-2">:</span>
-                    <span className="font-medium">
-                      {anggota?.reference ?? "-"}
-                    </span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="w-16 text-muted-foreground">DOB</span>
-                    <span className="mx-2">:</span>
-                    <span className="font-medium">
-                      {displayDate(anggota?.birth_date) || "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="w-16 text-muted-foreground">Phone</span>
-                    <span className="mx-2">:</span>
-                    <span className="font-medium">{anggota?.phone || "—"}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="w-16 text-muted-foreground">E-mail</span>
-                    <span className="mx-2">:</span>
-                    <span className="font-medium truncate">
-                      {anggota?.email || "—"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* QR + label */}
-              <div className="mt-4 flex flex-col items-end justify-center gap-3">
-                <div className="bg-white p-2 rounded-xl border shadow-sm">
+            <div className="p-5 space-y-3">
+              <RowLabel label="Email" value={display.email} />
+              <RowLabel label="Telepon" value={display.phone} />
+              <RowLabel label="Tgl. Lahir" value={display.birthDate} />
+              <div className="pt-3 border-t flex justify-center">
+                <div className="bg-white p-2 rounded-lg border shadow-sm">
                   <QRCode
                     value={String(anggota?.reference ?? anggota?.id ?? "")}
-                    size={96}
+                    size={80}
                   />
                 </div>
-                <h1 className="font-semibold">Scan QR Code</h1>
               </div>
+              <p className="text-center text-xs text-muted-foreground">Scan QR</p>
             </div>
-
-            {/* Dekorasi */}
-            <div className="pointer-events-none absolute -bottom-12 -left-12 w-44 h-44 rounded-full bg-gradient-to-tr from-rose-700 via-red-500 to-rose-400 opacity-20" />
           </Card>
         </div>
 
-        {/* RIGHT: BIODATA */}
-        <div className="col-span-12 lg:col-span-7">
-          <Card className="overflow-hidden bg-white h-full min-h-[460px] flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h2 className="text-base font-semibold">
-                Biodata Anggota {loadingAnggota ? "(memuat…)" : ""}
+        {/* RIGHT: BIODATA detail */}
+        <div className="lg:col-span-7">
+          <Card className="overflow-hidden border border-gray-200/80 shadow-sm">
+            <div className="px-5 py-4 border-b bg-muted/30">
+              <h2 className="text-base font-semibold text-gray-900">
+                Biodata Lengkap {loadingAnggota ? "(memuat…)" : ""}
               </h2>
-              <Button variant="outline" onClick={() => router.back()}>
-                Tutup
-              </Button>
             </div>
 
             {anggota ? (
-              <div className="px-4 py-4 flex-1 overflow-auto">
-                {/* Baris 1: Identitas akun */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
-                  <div>
-                    <div className="text-muted-foreground">Nomor Anggota</div>
-                    <div className="font-medium">
-                      {anggota.reference || "-"}
+              <div className="p-5 space-y-6">
+                <Section title="Identitas">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Nomor Anggota" value={anggota.reference} />
+                    <Field label="Tipe" value={anggota.type} />
+                    <Field label="Status" value={statusBadgeAnggota(anggota.status)} />
+                  </div>
+                </Section>
+                <Section title="Kontak">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Nama" value={display.name} />
+                    <Field label="Email" value={display.email} />
+                    <Field label="Telepon" value={display.phone} />
+                    <div className="sm:col-span-2">
+                      <Field label="Alamat" value={display.address} />
                     </div>
                   </div>
-                  <div>
-                    <div className="text-muted-foreground">Status</div>
-                    <div className="font-medium">
-                      {statusBadgePinjaman((anggota.status ?? 0) as number)}
-                    </div>
+                </Section>
+                <Section title="Data Pribadi">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Gender" value={display.gender} />
+                    <Field label="Tempat Lahir" value={display.birthPlace} />
+                    <Field label="Tanggal Lahir" value={display.birthDate} />
+                    <Field label="NIK" value={display.nik} />
+                    <Field label="NPWP" value={display.npwp} />
                   </div>
-                </div>
-
-                {/* Baris 2: Kontak */}
-                <h4 className="text-xs font-semibold text-muted-foreground mb-2">
-                  Kontak
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-4">
-                  <div>
-                    <div className="text-muted-foreground">Email</div>
-                    <div className="font-medium">{anggota.email || "-"}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Telepon</div>
-                    <div className="font-medium">{anggota.phone || "-"}</div>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <div className="text-muted-foreground">Alamat</div>
-                    <div className="font-medium">{anggota.address || "-"}</div>
-                  </div>
-                </div>
-
-                {/* Baris 3: Data Pribadi */}
-                <h4 className="text-xs font-semibold text-muted-foreground mb-2">
-                  Data Pribadi
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-4">
-                  <div>
-                    <div className="text-muted-foreground">Nama</div>
-                    <div className="font-medium">{anggota.name || "-"}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Gender</div>
-                    <div className="font-medium">{anggota.gender || "-"}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Tempat Lahir</div>
-                    <div className="font-medium">
-                      {anggota.birth_place || "-"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Tanggal Lahir</div>
-                    <div className="font-medium">
-                      {displayDate(anggota.birth_date) || "-"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">NIK</div>
-                    <div className="font-medium">{anggota.nik || "-"}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">NPWP</div>
-                    <div className="font-medium">{anggota.npwp || "-"}</div>
-                  </div>
-                </div>
-
-                {/* Baris 4: Pekerjaan */}
-                <h4 className="text-xs font-semibold text-muted-foreground mb-2">
-                  Pekerjaan
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <div className="text-muted-foreground">NIP</div>
-                    <div className="font-medium">{anggota.nip || "-"}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Unit Kerja</div>
-                    <div className="font-medium">
-                      {anggota.unit_kerja || "-"}
-                    </div>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <div className="text-muted-foreground">Jabatan</div>
-                    <div className="font-medium">{anggota.jabatan || "-"}</div>
-                  </div>
-                </div>
+                </Section>
+              </div>
+            ) : !loadingAnggota ? (
+              <div className="p-8 text-center text-muted-foreground">
+                Data anggota tidak tersedia. Pastikan parameter <code className="text-xs bg-muted px-1 rounded">anggota_id</code> ada.
               </div>
             ) : (
-              <div className="px-4 py-6 text-sm text-muted-foreground">
-                Data anggota belum tersedia.
+              <div className="p-8 text-center text-muted-foreground">
+                Memuat biodata…
               </div>
             )}
           </Card>
@@ -494,99 +403,106 @@ function HistoryPageInner() {
       </div>
 
       {/* ====== BOTTOM: TAB + TABEL (full width) ====== */}
-      <Card className="overflow-hidden bg-white">
+      <Card className="overflow-hidden border border-gray-200/80 shadow-sm">
         <Tabs value={tab} onValueChange={handleTabChange}>
-          <div className="px-4">
-            <TabsList className="w-full justify-start">
-              <TabsTrigger value="simpanan">Riwayat Simpanan</TabsTrigger>
-              <TabsTrigger value="pinjaman">Riwayat Pinjaman</TabsTrigger>
-              <TabsTrigger value="pembayaran">Riwayat Pembayaran</TabsTrigger>
+          <div className="px-4 pt-4">
+            <TabsList className="w-full sm:w-auto justify-start gap-1 bg-muted/50 p-1 rounded-lg">
+              <TabsTrigger value="simpanan" className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                Riwayat Simpanan
+              </TabsTrigger>
+              <TabsTrigger value="pinjaman" className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                Riwayat Pinjaman
+              </TabsTrigger>
+              <TabsTrigger value="pembayaran" className="rounded-md data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                Riwayat Pembayaran
+              </TabsTrigger>
             </TabsList>
           </div>
 
           <div className="px-4 py-4">
-            {/* SIMPANAN */}
+            {/* SIMPANAN — typed Simpanan[] dari service */}
             <TabsContent value="simpanan" className="m-0">
-              <div className="overflow-x-auto rounded-md border">
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left">
                     <tr>
-                      <th className="px-3 py-2 whitespace-nowrap">Tanggal</th>
-                      <th className="px-3 py-2 whitespace-nowrap">Referensi</th>
-                      <th className="px-3 py-2 whitespace-nowrap">Kategori</th>
-                      <th className="px-3 py-2 whitespace-nowrap">Nominal</th>
-                      <th className="px-3 py-2 whitespace-nowrap">Status</th>
-                      <th className="px-3 py-2 whitespace-nowrap">
-                        Pembayaran
-                      </th>
+                      <th className="px-4 py-3 whitespace-nowrap font-medium">Tanggal</th>
+                      <th className="px-4 py-3 whitespace-nowrap font-medium">Referensi</th>
+                      <th className="px-4 py-3 whitespace-nowrap font-medium">Kategori</th>
+                      <th className="px-4 py-3 whitespace-nowrap font-medium text-right">Nominal</th>
+                      <th className="px-4 py-3 whitespace-nowrap font-medium">Status</th>
+                      <th className="px-4 py-3 whitespace-nowrap font-medium">Pembayaran</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {simpananList.map((row) => (
-                      <tr key={row.id} className="border-t">
-                        <td className="px-3 py-2">
-                          {displayDate(row.tanggal) || row.tanggal}
+                    {simpananList.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                          Belum ada riwayat simpanan.
                         </td>
-                        <td className="px-3 py-2">{row.reference}</td>
-                        <td className="px-3 py-2">{row.kategori}</td>
-                        <td className="px-3 py-2">
-                          Rp {formatRupiah(row.nominal)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {statusBadgeSimpanan(row.status)}
-                        </td>
-                        <td className="px-3 py-2">{row.pembayaran}</td>
                       </tr>
-                    ))}
+                    ) : (
+                      simpananList.map((row) => (
+                        <tr key={row.id} className="border-t border-gray-100 hover:bg-muted/30">
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {displayDate(row.date) || row.date}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap font-mono text-xs">{row.reference}</td>
+                          <td className="px-4 py-3 whitespace-nowrap">{row.category_name ?? "—"}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
+                            {formatRupiahWithRp(row.nominal)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">{statusBadgeSimpanan(row.status)}</td>
+                          <td className="px-4 py-3 whitespace-nowrap">{simpananPaymentLabel(row)}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
-              <TablePagination
-                page={pageS}
-                total={simpananTotal}
-                onChange={setPageS}
-              />
+              {simpananTotal > PER_PAGE && (
+                <TablePagination
+                  page={pageS}
+                  total={simpananTotal}
+                  perPage={PER_PAGE}
+                  onChange={setPageS}
+                />
+              )}
             </TabsContent>
 
             {/* PINJAMAN */}
             <TabsContent value="pinjaman" className="m-0">
-              <div className="overflow-x-auto rounded-md border">
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left">
                     <tr>
-                      <th className="px-3 py-2">Tanggal</th>
-                      <th className="px-3 py-2">Referensi</th>
-                      <th className="px-3 py-2">Kategori</th>
-                      <th className="px-3 py-2">Pokok</th>
-                      <th className="px-3 py-2">Tenor (bln)</th>
-                      <th className="px-3 py-2">Bunga (%)</th>
-                      <th className="px-3 py-2">Angsuran/Bln</th>
-                      <th className="px-3 py-2">Status</th>
+                      <th className="px-4 py-3">Tanggal</th>
+                      <th className="px-4 py-3">Referensi</th>
+                      <th className="px-4 py-3">Kategori</th>
+                      <th className="px-4 py-3 text-right">Pokok</th>
+                      <th className="px-4 py-3">Tenor (bln)</th>
+                      <th className="px-4 py-3">Bunga (%)</th>
+                      <th className="px-4 py-3 text-right">Angsuran/Bln</th>
+                      <th className="px-4 py-3">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pinjamanList.map((row) => (
-                      <tr key={row.id} className="border-t">
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {displayDate(row.tanggal) || row.tanggal}
+                    {pinjamanList.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                          Belum ada riwayat pinjaman.
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {row.reference}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {row.kategori}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          Rp {formatRupiah(row.nominal)}
-                        </td>
-                        <td className="px-3 py-2">{row.tenor}</td>
-                        <td className="px-3 py-2">{row.bungaPersen}</td>
-                        <td className="px-3 py-2">
-                          Rp {formatRupiah(row.angsuranBulanan)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {statusBadgePinjaman(row.status)}
-                        </td>
+                      </tr>
+                    ) : pinjamanList.map((row) => (
+                      <tr key={row.id} className="border-t border-gray-100 hover:bg-muted/30">
+                        <td className="px-4 py-3 whitespace-nowrap">{displayDate(row.tanggal) || row.tanggal}</td>
+                        <td className="px-4 py-3 whitespace-nowrap font-mono text-xs">{row.reference}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{row.kategori}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right">Rp {formatRupiah(row.nominal)}</td>
+                        <td className="px-4 py-3">{row.tenor}</td>
+                        <td className="px-4 py-3">{row.bungaPersen}</td>
+                        <td className="px-4 py-3 text-right">Rp {formatRupiah(row.angsuranBulanan)}</td>
+                        <td className="px-4 py-3">{statusBadgePinjaman(row.status)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -601,46 +517,40 @@ function HistoryPageInner() {
 
             {/* PEMBAYARAN */}
             <TabsContent value="pembayaran" className="m-0">
-              <div className="flex items-center justify-between mb-2 text-xs sm:text-sm">
-                <div className="space-x-3">
-                  <span>
-                    Total Grand: <strong>Rp {formatRupiah(totalGrand)}</strong>
-                  </span>
-                </div>
+              <div className="flex items-center justify-between mb-4 text-sm">
+                <span className="text-muted-foreground">
+                  Total Grand: <strong className="text-foreground">Rp {formatRupiah(totalGrand)}</strong>
+                </span>
               </div>
-              <div className="overflow-x-auto rounded-md border">
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left">
                     <tr>
-                      <th className="px-3 py-2">Tanggal</th>
-                      <th className="px-3 py-2">Referensi</th>
-                      <th className="px-3 py-2">Total</th>
-                      <th className="px-3 py-2">Grand Total</th>
-                      <th className="px-3 py-2">Status</th>
-                      <th className="px-3 py-2">Tipe</th>
-                      <th className="px-3 py-2">Payment</th>
+                      <th className="px-4 py-3">Tanggal</th>
+                      <th className="px-4 py-3">Referensi</th>
+                      <th className="px-4 py-3 text-right">Total</th>
+                      <th className="px-4 py-3 text-right">Grand Total</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Tipe</th>
+                      <th className="px-4 py-3">Payment</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pembayaranList.map((row) => (
-                      <tr key={row.id} className="border-t">
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {displayDate(row.tanggal) || row.tanggal}
+                    {pembayaranList.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                          Belum ada riwayat pembayaran.
                         </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {row.reference}
-                        </td>
-                        <td className="px-3 py-2">
-                          Rp {formatRupiah(row.total)}
-                        </td>
-                        <td className="px-3 py-2">
-                          Rp {formatRupiah(row.grandTotal)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {statusBadgeTransaksi(row.status)}
-                        </td>
-                        <td className="px-3 py-2">{row.tipe}</td>
-                        <td className="px-3 py-2">{row.paymentType}</td>
+                      </tr>
+                    ) : pembayaranList.map((row) => (
+                      <tr key={row.id} className="border-t border-gray-100 hover:bg-muted/30">
+                        <td className="px-4 py-3 whitespace-nowrap">{displayDate(row.tanggal) || row.tanggal}</td>
+                        <td className="px-4 py-3 whitespace-nowrap font-mono text-xs">{row.reference}</td>
+                        <td className="px-4 py-3 text-right">Rp {formatRupiah(row.total)}</td>
+                        <td className="px-4 py-3 text-right font-medium">Rp {formatRupiah(row.grandTotal)}</td>
+                        <td className="px-4 py-3">{statusBadgeTransaksi(row.status)}</td>
+                        <td className="px-4 py-3">{row.tipe}</td>
+                        <td className="px-4 py-3">{row.paymentType}</td>
                       </tr>
                     ))}
                   </tbody>

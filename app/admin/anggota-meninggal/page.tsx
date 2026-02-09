@@ -2,8 +2,6 @@
 
 import { useState, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,28 +9,29 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 import { ProdukToolbar } from "@/components/ui/produk-toolbar";
 import {
-  useGetAnggotaMeninggalListQuery,
-  useCreateAnggotaMeninggalMutation,
-  useUpdateAnggotaMeninggalMutation,
-  useDeleteAnggotaMeninggalMutation,
-  useUpdateAnggotaMeninggalStatusMutation,
-  type AnggotaMeninggal,
-  type CreateAnggotaMeninggalRequest,
+  useGetMeninggalListQuery,
+  useCreateMeninggalMutation,
+  useUpdateMeninggalMutation,
+  useDeleteMeninggalMutation,
+  useValidateMeninggalStatusMutation,
 } from "@/services/admin/anggota-meninggal.service";
+import type {
+  MeninggalItem,
+  MeninggalCreatePayload,
+  MeninggalUpdatePayload,
+  MeninggalStatus,
+} from "@/types/admin/anggota-meninggal";
 import { useGetAnggotaListQuery } from "@/services/koperasi-service/anggota.service";
-import { CheckCircle, XCircle } from "lucide-react";
+import type { AnggotaKoperasi } from "@/types/koperasi-types/anggota";
 import Swal from "sweetalert2";
 import ActionsGroup from "@/components/admin-components/actions-group";
 import AnggotaMeninggalForm from "@/components/form-modal/admin/anggota-meninggal-form";
+import { displayDate } from "@/lib/format-utils";
 
 export default function AnggotaMeninggalPage() {
   // State management
@@ -45,10 +44,9 @@ export default function AnggotaMeninggalPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<AnggotaMeninggal | null>(
-    null
-  );
-  const [formData, setFormData] = useState<CreateAnggotaMeninggalRequest>({
+  const [statusModalItem, setStatusModalItem] = useState<MeninggalItem | null>(null);
+  const [selectedItem, setSelectedItem] = useState<MeninggalItem | null>(null);
+  const [formData, setFormData] = useState<MeninggalCreatePayload>({
     anggota_id: 0,
     deceased_at: "",
     description: "",
@@ -59,11 +57,14 @@ export default function AnggotaMeninggalPage() {
   const [anggotaSearch, setAnggotaSearch] = useState<string>("");
 
   // API calls
-  const { data: anggotaMeninggalData, isLoading } =
-    useGetAnggotaMeninggalListQuery({
-      page: 1,
-      paginate: 100,
-    });
+  const { data: meninggalData, isLoading, refetch: refetchMeninggal } = useGetMeninggalListQuery({
+    page: 1,
+    paginate: 100,
+    ...(filters.search.trim() ? { search: filters.search.trim() } : {}),
+    ...(filters.status !== "all"
+      ? { status: Number(filters.status) as MeninggalStatus }
+      : {}),
+  });
 
   const { data: anggotaData, isLoading: isLoadingAnggota } =
     useGetAnggotaListQuery({
@@ -72,24 +73,24 @@ export default function AnggotaMeninggalPage() {
     });
 
   // Mutations
-  const [createAnggotaMeninggal] = useCreateAnggotaMeninggalMutation();
-  const [updateAnggotaMeninggal] = useUpdateAnggotaMeninggalMutation();
-  const [deleteAnggotaMeninggal] = useDeleteAnggotaMeninggalMutation();
-  const [updateStatus] = useUpdateAnggotaMeninggalStatusMutation();
+  const [createMeninggal] = useCreateMeninggalMutation();
+  const [updateMeninggal] = useUpdateMeninggalMutation();
+  const [deleteMeninggal] = useDeleteMeninggalMutation();
+  const [validateMeninggalStatus] = useValidateMeninggalStatusMutation();
 
   // Data processing
-  const anggotaMeninggalList = useMemo(
-    () => anggotaMeninggalData?.data || [],
-    [anggotaMeninggalData?.data]
+  const meninggalList = useMemo(
+    () => meninggalData?.data ?? [],
+    [meninggalData?.data]
   );
 
-  // Normalisasi list anggota (hanya field yang dibutuhkan combobox)
+  // Normalisasi list anggota sesuai AnggotaKoperasi (user_name, user_email)
   const anggotaList = useMemo(
     () =>
-      (anggotaData?.data || []).map((a) => ({
+      (anggotaData?.data ?? []).map((a: AnggotaKoperasi) => ({
         id: a.id,
-        name: a.name ?? "",
-        email: a.email ?? "",
+        name: a.user_name ?? a.name ?? "",
+        email: a.user_email ?? a.email ?? "",
       })),
     [anggotaData?.data]
   );
@@ -106,63 +107,23 @@ export default function AnggotaMeninggalPage() {
     );
   }, [anggotaSearch, anggotaList]);
 
-  // Filter data table
-  const filteredData = useMemo(() => {
-    let filtered = anggotaMeninggalList;
+  // Filter data table (search/status sudah di API via MeninggalListParams; tampilkan list dari API)
+  const filteredData = useMemo(() => meninggalList, [meninggalList]);
 
-    if (filters.status && filters.status !== "all") {
-      filtered = filtered.filter(
-        (item) => String(item.status) === filters.status
-      );
-    }
-
-    if (filters.search) {
-      const q = filters.search.toLowerCase();
-      filtered = filtered.filter(
-        (item) =>
-          item.anggota_name?.toLowerCase().includes(q) ||
-          item.anggota_email?.toLowerCase().includes(q) ||
-          item.anggota_phone?.toLowerCase().includes(q) ||
-          item.anggota_nik?.toLowerCase().includes(q)
-      );
-    }
-
-    return filtered;
-  }, [anggotaMeninggalList, filters.status, filters.search]);
-
-  // Helper functions
   const getStatusBadge = (status: number) => {
-    switch (status) {
-      case 0:
-        return (
-          <Badge variant="outline" className="bg-yellow-100 text-yellow-800">
-            Pending
-          </Badge>
-        );
-      case 1:
-        return (
-          <Badge variant="outline" className="bg-green-100 text-green-800">
-            Approved
-          </Badge>
-        );
-      case 2:
-        return (
-          <Badge variant="outline" className="bg-red-100 text-red-800">
-            Rejected
-          </Badge>
-        );
-      default:
-        return <Badge variant="outline">Unknown</Badge>;
-    }
+    if (status === 1) return <Badge variant="success">Approved</Badge>;
+    if (status === 2) return <Badge variant="destructive">Rejected</Badge>;
+    return <Badge variant="secondary">Pending</Badge>;
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("id-ID", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
+  function FieldLabel({ label, value }: { label: string; value?: string | null }) {
+    return (
+      <div>
+        <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
+        <p className="mt-1 text-sm text-foreground">{value ?? "—"}</p>
+      </div>
+    );
+  }
 
   // Event handlers
   const handleCreate = () => {
@@ -170,18 +131,18 @@ export default function AnggotaMeninggalPage() {
     setIsCreateModalOpen(true);
   };
 
-  const handleEdit = (item: AnggotaMeninggal) => {
+  const handleEdit = (item: MeninggalItem) => {
     setSelectedItem(item);
     setFormData({
       anggota_id: item.anggota_id,
-      deceased_at: item.deceased_at.split("T")[0],
-      description: item.description || "",
+      deceased_at: item.deceased_at?.split("T")[0] ?? "",
+      description: item.description ?? "",
       status: item.status,
     });
     setIsEditModalOpen(true);
   };
 
-  const handleDetail = (item: AnggotaMeninggal) => {
+  const handleDetail = (item: MeninggalItem) => {
     setSelectedItem(item);
     setIsDetailModalOpen(true);
   };
@@ -200,7 +161,8 @@ export default function AnggotaMeninggalPage() {
 
     if (result.isConfirmed) {
       try {
-        await deleteAnggotaMeninggal(id).unwrap();
+        await deleteMeninggal(id).unwrap();
+        await refetchMeninggal();
         Swal.fire(
           "Berhasil!",
           "Data anggota meninggal telah dihapus.",
@@ -212,18 +174,20 @@ export default function AnggotaMeninggalPage() {
     }
   };
 
-  const handleStatusUpdate = async (id: number, status: number) => {
+  const handleStatusUpdate = async (id: number, status: 1 | 2) => {
     try {
-      await updateStatus({ id, status }).unwrap();
+      await validateMeninggalStatus({ id, status }).unwrap();
+      await refetchMeninggal();
+      setStatusModalItem(null);
       Swal.fire("Berhasil!", "Status telah diperbarui.", "success");
     } catch {
       Swal.fire("Error!", "Gagal memperbarui status.", "error");
     }
   };
 
-  // ====== Submit logic DI-PISAH untuk create/edit agar clear ======
-  const submitCreate = async (payload: CreateAnggotaMeninggalRequest) => {
-    await createAnggotaMeninggal(payload).unwrap();
+  const submitCreate = async (payload: MeninggalCreatePayload) => {
+    await createMeninggal(payload).unwrap();
+    await refetchMeninggal();
     Swal.fire(
       "Berhasil!",
       "Data anggota meninggal telah ditambahkan.",
@@ -233,9 +197,16 @@ export default function AnggotaMeninggalPage() {
     setFormData({ anggota_id: 0, deceased_at: "", description: "", status: 0 });
   };
 
-  const submitEdit = async (payload: CreateAnggotaMeninggalRequest) => {
+  const submitEdit = async (payload: MeninggalCreatePayload) => {
     if (!selectedItem) return;
-    await updateAnggotaMeninggal({ id: selectedItem.id, payload }).unwrap();
+    const updatePayload: MeninggalUpdatePayload = {
+      anggota_id: payload.anggota_id,
+      deceased_at: payload.deceased_at,
+      description: payload.description ?? null,
+      status: (payload.status ?? 0) as MeninggalStatus,
+    };
+    await updateMeninggal({ id: selectedItem.id, payload: updatePayload }).unwrap();
+    await refetchMeninggal();
     Swal.fire(
       "Berhasil!",
       "Data anggota meninggal telah diperbarui.",
@@ -246,10 +217,15 @@ export default function AnggotaMeninggalPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Toolbar */}
+    <div className="p-6 space-y-6 max-w-6xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+          Anggota Meninggal
+        </h1>
+      </div>
+
       <ProdukToolbar
-        addButtonLabel="Anggota Meninggal"
+        addButtonLabel="Tambah Anggota Meninggal"
         openModal={handleCreate}
         onSearchChange={(search: string) =>
           setFilters((s) => ({ ...s, search }))
@@ -273,79 +249,72 @@ export default function AnggotaMeninggalPage() {
         }
       />
 
-      {/* Data Table */}
-      <Card>
+      <Card className="overflow-hidden border border-gray-200/80 shadow-sm">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/60 text-left">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Aksi
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Nama
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Phone
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    NIK
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Tanggal Meninggal
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Aksi</th>
+                  <th className="px-4 py-3 font-medium">Nama</th>
+                  <th className="px-4 py-3 font-medium">Email</th>
+                  <th className="px-4 py-3 font-medium">Telepon</th>
+                  <th className="px-4 py-3 font-medium">NIK</th>
+                  <th className="px-4 py-3 font-medium">Tanggal Meninggal</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-4 text-center">
-                      Loading...
+                    <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                      Memuat data...
                     </td>
                   </tr>
                 ) : filteredData.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={8}
-                      className="px-6 py-4 text-center text-gray-500"
-                    >
-                      Tidak ada data
+                    <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                      Tidak ada data anggota meninggal.
                     </td>
                   </tr>
                 ) : (
                   filteredData.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <tr key={item.id} className="border-t border-gray-100 hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
                         <ActionsGroup
                           handleDetail={() => handleDetail(item)}
                           handleEdit={() => handleEdit(item)}
                           handleDelete={() => handleDelete(item.id)}
                         />
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {item.anggota_name}
+                      <td className="px-4 py-3 whitespace-nowrap font-medium">
+                        {item.anggota_name ?? "—"}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {item.anggota_email}
+                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                        {item.anggota_email ?? "—"}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {item.anggota_phone}
+                      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                        {item.anggota_phone ?? "—"}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {item.anggota_nik}
+                      <td className="px-4 py-3 whitespace-nowrap font-mono text-xs">
+                        {item.anggota_nik ?? "—"}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(item.deceased_at)}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {displayDate(item.deceased_at) || "—"}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(item.status)}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {getStatusBadge(item.status)}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => setStatusModalItem(item)}
+                          >
+                            Ubah status
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -363,16 +332,20 @@ export default function AnggotaMeninggalPage() {
           if (!open) setIsCreateModalOpen(false);
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Tambah Anggota Meninggal</DialogTitle>
+            <DialogDescription>
+              Pilih anggota dan isi tanggal serta keterangan meninggal.
+            </DialogDescription>
           </DialogHeader>
-
+          <div className="mt-2">
           <AnggotaMeninggalForm
             mode="create"
             initial={formData}
             anggotaOptions={anggotaFiltered}
             isAnggotaLoading={isLoadingAnggota}
+            statusEditable={false}
             onAnggotaSearch={(q) => setAnggotaSearch(q)}
             onSubmit={async (payload) => {
               try {
@@ -383,6 +356,7 @@ export default function AnggotaMeninggalPage() {
             }}
             onCancel={() => setIsCreateModalOpen(false)}
           />
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -396,16 +370,20 @@ export default function AnggotaMeninggalPage() {
           }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Anggota Meninggal</DialogTitle>
+            <DialogDescription>
+              Ubah tanggal meninggal, deskripsi, atau status.
+            </DialogDescription>
           </DialogHeader>
-
+          <div className="mt-2">
           <AnggotaMeninggalForm
             mode="edit"
             initial={formData}
             anggotaOptions={anggotaFiltered}
             isAnggotaLoading={isLoadingAnggota}
+            statusEditable={false}
             onAnggotaSearch={(q) => setAnggotaSearch(q)}
             onSubmit={async (payload) => {
               try {
@@ -419,65 +397,86 @@ export default function AnggotaMeninggalPage() {
               setSelectedItem(null);
             }}
           />
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* Detail Modal (unchanged) */}
+      {/* Modal Ubah Status */}
+      <Dialog
+        open={statusModalItem !== null}
+        onOpenChange={(open) => !open && setStatusModalItem(null)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Ubah Status</DialogTitle>
+            <DialogDescription>
+              {statusModalItem && (
+                <>
+                  Anggota: <strong>{statusModalItem.anggota_name ?? "—"}</strong>. Pilih status baru.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {statusModalItem && (
+            <div className="flex flex-col gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-center border-green-200 bg-green-50 hover:bg-green-100 text-green-800"
+                onClick={() => handleStatusUpdate(statusModalItem.id, 1)}
+              >
+                Setujui (Approved)
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-center border-red-200 bg-red-50 hover:bg-red-100 text-red-800"
+                onClick={() => handleStatusUpdate(statusModalItem.id, 2)}
+              >
+                Tolak (Rejected)
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => setStatusModalItem(null)}
+              >
+                Batal
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Detail Modal */}
       <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Detail Anggota Meninggal</DialogTitle>
+            <DialogDescription>
+              Informasi lengkap data anggota yang tercatat meninggal.
+            </DialogDescription>
           </DialogHeader>
           {selectedItem && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="mt-2 space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FieldLabel label="Nama" value={selectedItem.anggota_name} />
+                <FieldLabel label="Email" value={selectedItem.anggota_email} />
+                <FieldLabel label="Telepon" value={selectedItem.anggota_phone} />
+                <FieldLabel label="NIK" value={selectedItem.anggota_nik} />
+                <FieldLabel
+                  label="Tanggal Meninggal"
+                  value={displayDate(selectedItem.deceased_at) || "—"}
+                />
                 <div>
-                  <Label className="text-sm font-medium text-gray-500">
-                    Nama
-                  </Label>
-                  <p className="text-sm">{selectedItem.anggota_name}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">
-                    Email
-                  </Label>
-                  <p className="text-sm">{selectedItem.anggota_email}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">
-                    Phone
-                  </Label>
-                  <p className="text-sm">{selectedItem.anggota_phone}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">
-                    NIK
-                  </Label>
-                  <p className="text-sm">{selectedItem.anggota_nik}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">
-                    Tanggal Meninggal
-                  </Label>
-                  <p className="text-sm">
-                    {formatDate(selectedItem.deceased_at)}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">
-                    Status
-                  </Label>
-                  <div className="mt-1">
-                    {getStatusBadge(selectedItem.status)}
-                  </div>
+                  <Label className="text-xs font-medium text-muted-foreground">Status</Label>
+                  <div className="mt-1">{getStatusBadge(selectedItem.status)}</div>
                 </div>
               </div>
               {selectedItem.description && (
                 <div>
-                  <Label className="text-sm font-medium text-gray-500">
-                    Deskripsi
-                  </Label>
-                  <p className="text-sm">{selectedItem.description}</p>
+                  <Label className="text-xs font-medium text-muted-foreground">Deskripsi</Label>
+                  <p className="mt-1 text-sm text-foreground">{selectedItem.description}</p>
                 </div>
               )}
             </div>

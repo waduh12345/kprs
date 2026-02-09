@@ -97,6 +97,9 @@ type Props = {
 
   /** ===== Template CSV (opsional) ===== */
   showTemplateCsvButton?: boolean;
+  /** Jika diisi, tombol template akan memanggil callback ini (unduh via service). Jika tidak, pakai templateCsvUrl. */
+  onDownloadTemplateCsv?: () => void | Promise<void>;
+  templateCsvLoading?: boolean;
   templateCsvUrl?: string;
   templateCsvLabel?: string;
 
@@ -172,7 +175,9 @@ export function ProdukToolbar({
 
   // template csv (opsional)
   showTemplateCsvButton = false,
-  templateCsvUrl = "https://api-koperasi.naditechno.id/template-import-anggota.csv",
+  onDownloadTemplateCsv,
+  templateCsvLoading = false,
+  templateCsvUrl = "http://127.0.0.1:8000/api/v1/anggota/anggotas/import/template",
   templateCsvLabel = "Template CSV",
 
   // date
@@ -388,16 +393,27 @@ export function ProdukToolbar({
 
           {/* Download Template CSV (opsional) */}
           {showTemplateCsvButton && (
-            <a
-              href={templateCsvUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-            >
-              <Button variant="green" className="h-10">
-                {templateCsvLabel}
+            onDownloadTemplateCsv ? (
+              <Button
+                variant="green"
+                className="h-10"
+                disabled={templateCsvLoading}
+                onClick={() => void onDownloadTemplateCsv()}
+              >
+                {templateCsvLoading ? "Mengunduh..." : templateCsvLabel}
               </Button>
-            </a>
+            ) : (
+              <a
+                href={templateCsvUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download
+              >
+                <Button variant="green" className="h-10">
+                  {templateCsvLabel}
+                </Button>
+              </a>
+            )
           )}
 
           {/* Import */}

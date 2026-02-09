@@ -1,75 +1,63 @@
 import { apiSlice } from "@/services/base-query";
 import type {
-  Simpanan,
-  SimpananResponse,
-} from "@/types/admin/simpanan";
+  SimpananExportParams,
+  SimpananImportDetail,
+  SimpananImportItem,
+  SimpananImportListParams,
+  SimpananImportResponse,
+  SimpananMigrasiImportResponse,
+  SimpananTagihanImportResponse,
+} from "@/types/admin/simpanan/import-export";
 
-// Interface untuk data yang dikembalikan dari List Simpanan, difilter dari SimpananResponse
-interface SimpananListResponse {
-  data: Simpanan[];
+/** Response paginated list (GET /simpanan/import) */
+interface SimpananImportListApiResponse {
+  data: SimpananImportItem[];
   last_page: number;
   current_page: number;
   total: number;
   per_page: number;
 }
 
-// Interface untuk parameter Get All Data (Simpanan)
-interface GetSimpananListParams {
-  page: number;
-  paginate: number;
-  search?: string;
-  status?: number;
-  from_date?: string;
-  to_date?: string;
-  user_id?: number;
-  simpanan_category_id?: number;
-}
-
 export const simpananImportApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    // 🔍 Get All Data Simpanan Import (dengan pagination dan filter)
-    // URL: /simpanan/import?paginate=10&search=&page=1&status=1&from_date=&to_date=&user_id=&simpanan_category_id=
+    // GET /simpanan/import – list riwayat import (pagination + filter)
     getSimpananImportList: builder.query<
-      SimpananListResponse,
-      GetSimpananListParams
+      SimpananImportListApiResponse,
+      SimpananImportListParams
     >({
       query: (params) => {
         const {
-          page,
-          paginate,
+          page = 1,
+          paginate = 10,
           search,
-          status,
-          from_date,
-          to_date,
-          user_id,
-          simpanan_category_id,
+          orderBy,
+          order,
+          searchBySpecific,
         } = params;
-
         return {
           url: `/simpanan/import`,
           method: "GET",
           params: {
             page,
             paginate,
-            // Tambahkan parameter lain hanya jika ada nilainya
-            ...(typeof search === "string" && search.trim() !== ""
-              ? { search }
-              : {}),
-            ...(typeof status === "number" ? { status } : {}),
-            ...(typeof from_date === "string" && from_date.trim() !== ""
-              ? { from_date }
-              : {}),
-            ...(typeof to_date === "string" && to_date.trim() !== ""
-              ? { to_date }
-              : {}),
-            ...(typeof user_id === "number" ? { user_id } : {}),
-            ...(typeof simpanan_category_id === "number"
-              ? { simpanan_category_id }
-              : {}),
+            ...(search != null && search.trim() !== "" ? { search: search.trim() } : {}),
+            ...(orderBy != null ? { orderBy } : {}),
+            ...(order != null ? { order } : {}),
+            ...(searchBySpecific != null ? { searchBySpecific } : {}),
           },
         };
       },
-      transformResponse: (response: SimpananResponse) => ({
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: {
+          current_page: number;
+          data: SimpananImportItem[];
+          last_page: number;
+          total: number;
+          per_page: number;
+        };
+      }): SimpananImportListApiResponse => ({
         data: response.data.data,
         last_page: response.data.last_page,
         current_page: response.data.current_page,
@@ -78,9 +66,8 @@ export const simpananImportApi = apiSlice.injectEndpoints({
       }),
     }),
 
-    // 🔍 Get Simpanan by ID
-    // URL: /simpanan/import/{id}
-    getSimpananImportById: builder.query<Simpanan, number>({
+    // GET /simpanan/import/:id – detail satu import (dengan details, wallet, simpanan)
+    getSimpananImportById: builder.query<SimpananImportDetail, number>({
       query: (id) => ({
         url: `/simpanan/import/${id}`,
         method: "GET",
@@ -88,17 +75,13 @@ export const simpananImportApi = apiSlice.injectEndpoints({
       transformResponse: (response: {
         code: number;
         message: string;
-        data: Simpanan;
+        data: SimpananImportDetail;
       }) => response.data,
     }),
 
-    // 📥 Post untuk Import Excel (Simpanan)
-    // URL: /simpanan/import (metode POST)
+    // POST /simpanan/import – import setoran simpanan (xlsx/csv), data langsung masuk
     importSimpananExcel: builder.mutation<
-      {
-        totalNominal: number;
-        totalRekening: number; code: number; message: string 
-},
+      { code: number; message: string; data?: SimpananImportResponse },
       { file: File }
     >({
       query: ({ file }) => {
@@ -107,30 +90,122 @@ export const simpananImportApi = apiSlice.injectEndpoints({
         return {
           url: `/simpanan/import`,
           method: "POST",
-          body: formData, // Mengirim FormData
+          body: formData,
         };
       },
       transformResponse: (response: {
         code: number;
         message: string;
-        data?: unknown;
+        data?: SimpananImportResponse;
       }) => ({
         code: response.code,
         message: response.message,
-        totalNominal: 0,
-        totalRekening: 0
+        data: response.data,
       }),
     }),
 
-    // 📄 Template Excel (GET)
-    // URL: https://api-example.id/template-import-simpanan.csv
-    // Endpoint ini hanya untuk mendapatkan URL template, bukan mengambil file (diasumsikan frontend akan menggunakan URL ini langsung)
-    getSimpananImportTemplateUrl: builder.query<string, void>({
-      queryFn: () => {
+    // POST /simpanan/import/tagihan – import tagihan (potong saldo simpanan)
+    importSimpananTagihanExcel: builder.mutation<
+      { code: number; message: string; data?: SimpananTagihanImportResponse },
+      { file: File }
+    >({
+      query: ({ file }) => {
+        const formData = new FormData();
+        formData.append("file", file);
         return {
-          data: "https://api-koperasi.naditechno.id/template-import-simpanan.csv", // Mengembalikan URL statis
+          url: `/simpanan/import/tagihan`,
+          method: "POST",
+          body: formData,
         };
       },
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data?: SimpananTagihanImportResponse;
+      }) => ({
+        code: response.code,
+        message: response.message,
+        data: response.data,
+      }),
+    }),
+
+    // GET /simpanan/import/template – unduh template import setoran/tambah simpanan (xlsx)
+    getSimpananTemplate: builder.query<Blob, void>({
+      query: () => ({
+        url: `/simpanan/import/template`,
+        method: "GET",
+        responseHandler: async (response) => {
+          if (!response.ok) throw new Error("Gagal mengambil template import simpanan");
+          return await response.blob();
+        },
+      }),
+    }),
+
+    // GET /simpanan/import/migrasi/template – unduh template import migrasi (rekening + saldo per anggota)
+    getSimpananMigrasiTemplate: builder.query<Blob, void>({
+      query: () => ({
+        url: `/simpanan/import/migrasi/template`,
+        method: "GET",
+        responseHandler: async (response) => {
+          if (!response.ok)
+            throw new Error("Gagal mengambil template import migrasi simpanan");
+          return await response.blob();
+        },
+      }),
+    }),
+
+    // POST /simpanan/import/migrasi – import migrasi (generate rekening + saldo per anggota)
+    importSimpananMigrasiExcel: builder.mutation<
+      { code: number; message: string; data?: SimpananMigrasiImportResponse },
+      { file: File }
+    >({
+      query: ({ file }) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        return {
+          url: `/simpanan/import/migrasi`,
+          method: "POST",
+          body: formData,
+        };
+      },
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data?: SimpananMigrasiImportResponse;
+      }) => ({
+        code: response.code,
+        message: response.message,
+        data: response.data,
+      }),
+    }),
+
+    // GET /simpanan/import/tagihan/template – unduh template import tagihan (xlsx)
+    getSimpananTagihanTemplate: builder.query<Blob, void>({
+      query: () => ({
+        url: `/simpanan/import/tagihan/template`,
+        method: "GET",
+        responseHandler: async (response) => {
+          if (!response.ok) throw new Error("Gagal mengambil template tagihan");
+          return await response.blob();
+        },
+      }),
+    }),
+
+    // POST /simpanan/export – export simpanan (queue, notifikasi saat selesai)
+    exportSimpanan: builder.mutation<
+      { code: number; message: string },
+      SimpananExportParams
+    >({
+      query: ({ from_date, to_date }) => ({
+        url: `/simpanan/export`,
+        method: "POST",
+        body: { from_date, to_date },
+        headers: { "Content-Type": "application/json" },
+      }),
+      transformResponse: (response: { code: number; message: string }) => ({
+        code: response.code,
+        message: response.message,
+      }),
     }),
   }),
   overrideExisting: false,
@@ -140,5 +215,10 @@ export const {
   useGetSimpananImportListQuery,
   useGetSimpananImportByIdQuery,
   useImportSimpananExcelMutation,
-  useGetSimpananImportTemplateUrlQuery,
+  useImportSimpananTagihanExcelMutation,
+  useImportSimpananMigrasiExcelMutation,
+  useLazyGetSimpananTemplateQuery,
+  useLazyGetSimpananMigrasiTemplateQuery,
+  useLazyGetSimpananTagihanTemplateQuery,
+  useExportSimpananMutation,
 } = simpananImportApi;

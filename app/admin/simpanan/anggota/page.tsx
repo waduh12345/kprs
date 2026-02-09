@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react"; // Tambah useEffect
+import { useMemo, useState, useEffect } from "react";
 import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import useModal from "@/hooks/use-modal";
 import {
   useGetWalletListQuery,
@@ -11,6 +13,11 @@ import {
   useUpdateWalletMutation,
   useDeleteWalletMutation,
 } from "@/services/admin/penarikan-simpanan.service";
+import {
+  useLazyGetSimpananMigrasiTemplateQuery,
+  useImportSimpananMigrasiExcelMutation,
+} from "@/services/admin/simpanan/import-excel.service";
+import type { SimpananMigrasiImportResponse } from "@/types/admin/simpanan/import-export";
 import { InputSimpanan } from "@/types/admin/simpanan/input-simpanan";
 import FormSimpanan from "@/components/form-modal/simpanan-form";
 import { useGetSimpananCategoryListQuery } from "@/services/master/simpanan-category.service";
@@ -18,7 +25,7 @@ import { useGetUsersListQuery } from "@/services/koperasi-service/users-manageme
 import { Combobox } from "@/components/ui/combo-box";
 import { FetchBaseQueryError } from "@reduxjs/toolkit/query";
 import { SerializedError } from "@reduxjs/toolkit";
-import { Filter, Plus } from "lucide-react";
+import { Filter, Plus, Download, Upload, Loader2 } from "lucide-react";
 import { formatRupiahWithRp } from "@/lib/format-utils";
 
 /** Payload type to send to /wallet (create) */
@@ -135,7 +142,88 @@ export default function SimpananAnggotaPage() {
   const [updateSimpanan, { isLoading: updating }] = useUpdateWalletMutation();
   const [deleteSimpanan] = useDeleteWalletMutation();
 
-  // --- Handlers (Create, Edit, Detail, Delete, Submit) tetap sama ---
+  // migrasi: template + import
+  const [getMigrasiTemplate, { isLoading: isTemplateLoading }] =
+    useLazyGetSimpananMigrasiTemplateQuery();
+  const [importMigrasiExcel, { isLoading: isImportingMigrasi }] =
+    useImportSimpananMigrasiExcelMutation();
+  const [fileMigrasi, setFileMigrasi] = useState<File | null>(null);
+
+  /** Unduh template migrasi (.xlsx) dari service GET /simpanan/import/migrasi/template */
+  const handleDownloadMigrasiTemplate = async () => {
+    try {
+      const result = await getMigrasiTemplate();
+      if (result.error || !result.data) {
+        const msg =
+          result.error && "message" in result.error
+            ? String(result.error.message)
+            : "Gagal mengambil template";
+        throw new Error(msg);
+      }
+      const url = URL.createObjectURL(result.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "template-migrasi-simpanan.xlsx";
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 200);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Tidak dapat mengunduh template migrasi.";
+      void Swal.fire({ icon: "error", title: "Gagal", text: message });
+    }
+  };
+
+  /** Import file migrasi – POST /simpanan/import/migrasi */
+  const handleImportMigrasi = async () => {
+    if (isImportingMigrasi || !fileMigrasi) return;
+    const file = fileMigrasi;
+    if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
+      void Swal.fire(
+        "Gagal",
+        "Format file harus Excel (.xlsx, .xls) atau CSV.",
+        "error"
+      );
+      return;
+    }
+    const { isConfirmed } = await Swal.fire({
+      title: "Konfirmasi Import Migrasi",
+      html: `Anda akan mengunggah file: <strong>${file.name}</strong>. Data rekening dan saldo akan diproses sesuai isi file. Lanjutkan?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Unggah & Proses",
+    });
+    if (!isConfirmed) return;
+    try {
+      const response = await importMigrasiExcel({ file }).unwrap();
+      await refetch();
+      const data = response.data as SimpananMigrasiImportResponse | undefined;
+      const detail =
+        data != null
+          ? `Referensi: ${data.reference ?? "-"}. Berhasil: ${data.processed ?? 0}, Gagal: ${data.failed ?? 0}.`
+          : "";
+      void Swal.fire({
+        icon: "success",
+        title: "Import Berhasil",
+        text: response.message ? `${response.message}${detail ? ` ${detail}` : ""}` : `File diproses. ${detail}`,
+      });
+      setFileMigrasi(null);
+      const input = document.getElementById("file_migrasi") as HTMLInputElement | null;
+      if (input) input.value = "";
+    } catch (err: unknown) {
+      console.error(err);
+      if (isFetchBaseQueryError(err)) {
+        const messageToShow = extractMessageFromFetchBaseQueryError(err);
+        void Swal.fire("Gagal", messageToShow, "error");
+      } else {
+        void Swal.fire("Gagal", String(err), "error");
+      }
+    }
+  };
+
+  // --- Handlers (Create, Edit, Detail, Delete, Submit) ---
   // open modal to create
   const handleOpenCreate = () => {
     setForm({});
@@ -355,7 +443,60 @@ export default function SimpananAnggotaPage() {
         </CardContent>
       </Card>
 
-      {/* TABEL dan PAGINATION (Tetap Sama) */}
+      {/* Migrasi Data: Download Template + Import */}
+      <Card className="border-t-4 border-amber-500">
+        <CardContent className="pt-6">
+          <h3 className="text-lg font-semibold text-amber-700 mb-1">
+            Migrasi Data Simpanan
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Gunakan template untuk migrasi rekening dan saldo simpanan per anggota. Isi file sesuai kolom template lalu unggah di sini.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 items-end">
+            <div className="flex-1 w-full space-y-2">
+              <Label htmlFor="file_migrasi">File migrasi (.xlsx / .csv)</Label>
+              <Input
+                id="file_migrasi"
+                type="file"
+                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                onChange={(e) => setFileMigrasi(e.target.files?.[0] ?? null)}
+                disabled={isImportingMigrasi}
+                className="max-w-md"
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleDownloadMigrasiTemplate}
+                disabled={isTemplateLoading}
+                className="shrink-0"
+              >
+                {isTemplateLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                {isTemplateLoading ? "Memuat..." : "Unduh Template Migrasi"}
+              </Button>
+              <Button
+                onClick={handleImportMigrasi}
+                disabled={isImportingMigrasi || !fileMigrasi}
+                className="shrink-0 bg-amber-600 hover:bg-amber-700"
+              >
+                {isImportingMigrasi ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Upload className="h-4 w-4 mr-2" />
+                )}
+                {isImportingMigrasi ? "Memproses..." : "Unggah & Proses"}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* TABEL dan PAGINATION */}
       <Card>
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm">

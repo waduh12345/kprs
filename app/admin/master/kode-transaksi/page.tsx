@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import Swal from "sweetalert2";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,10 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { ProdukToolbar } from "@/components/ui/produk-toolbar";
 import ActionsGroup from "@/components/admin-components/actions-group";
-import { ChevronDown, ChevronUp, Loader2 } from "lucide-react"; // Import Icons
+import { ChevronDown, ChevronUp, Loader2, Inbox } from "lucide-react";
 
 import {
   useGetKodeTransaksiListQuery,
@@ -37,10 +36,11 @@ const DetailRow = ({ id, colSpan }: { id: number; colSpan: number }) => {
 
   if (isLoading) {
     return (
-      <tr className="bg-gray-50/50">
-        <td colSpan={colSpan} className="p-4 text-center">
-          <div className="flex items-center justify-center gap-2 text-gray-500">
-            <Loader2 className="h-4 w-4 animate-spin" /> Memuat rincian...
+      <tr className="bg-muted/30">
+        <td colSpan={colSpan} className="px-6 py-6">
+          <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm">
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            Memuat rincian...
           </div>
         </td>
       </tr>
@@ -50,48 +50,53 @@ const DetailRow = ({ id, colSpan }: { id: number; colSpan: number }) => {
   if (!detail) return null;
 
   return (
-    <tr className="bg-gray-50 border-b shadow-inner">
-      <td colSpan={colSpan} className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pl-10 pr-4">
-          {/* Kolom Debet */}
-          <div className="border rounded-md bg-white p-3">
-            <h4 className="font-semibold text-sm mb-2 text-gray-700 border-b pb-1">
+    <tr className="bg-muted/20">
+      <td colSpan={colSpan} className="px-6 py-4 align-top">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-4">
+          <div className="rounded-lg border bg-background p-4 shadow-sm">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
               Posisi Debet
             </h4>
             {detail.debits && detail.debits.length > 0 ? (
-              <ul className="space-y-2">
+              <ul className="space-y-2.5">
                 {detail.debits.map((item) => (
-                  <li key={item.id} className="text-sm flex flex-col">
-                    <span className="font-mono font-medium text-blue-600">
+                  <li key={item.id} className="flex flex-col gap-0.5">
+                    <span className="font-mono text-sm font-medium text-blue-600">
                       {item.coa?.code}
                     </span>
-                    <span className="text-gray-600">{item.coa?.name}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {item.coa?.name}
+                    </span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-gray-400 italic">Tidak ada data</p>
+              <p className="text-sm text-muted-foreground italic">
+                Tidak ada data
+              </p>
             )}
           </div>
-
-          {/* Kolom Kredit */}
-          <div className="border rounded-md bg-white p-3">
-            <h4 className="font-semibold text-sm mb-2 text-gray-700 border-b pb-1">
+          <div className="rounded-lg border bg-background p-4 shadow-sm">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
               Posisi Kredit
             </h4>
             {detail.credits && detail.credits.length > 0 ? (
-              <ul className="space-y-2">
+              <ul className="space-y-2.5">
                 {detail.credits.map((item) => (
-                  <li key={item.id} className="text-sm flex flex-col">
-                    <span className="font-mono font-medium text-green-600">
+                  <li key={item.id} className="flex flex-col gap-0.5">
+                    <span className="font-mono text-sm font-medium text-emerald-600">
                       {item.coa?.code}
                     </span>
-                    <span className="text-gray-600">{item.coa?.name}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {item.coa?.name}
+                    </span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-gray-400 italic">Tidak ada data</p>
+              <p className="text-sm text-muted-foreground italic">
+                Tidak ada data
+              </p>
             )}
           </div>
         </div>
@@ -175,11 +180,23 @@ export default function KodeTransaksiPage() {
   const getStatusBadge = (status: number) => {
     switch (status) {
       case 1:
-        return <Badge className="bg-green-100 text-green-800">Active</Badge>;
+        return (
+          <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-700 border-0">
+            Active
+          </Badge>
+        );
       case 0:
-        return <Badge className="bg-red-100 text-red-800">Inactive</Badge>;
+        return (
+          <Badge variant="secondary" className="bg-red-500/10 text-red-700 border-0">
+            Inactive
+          </Badge>
+        );
       default:
-        return <Badge className="bg-gray-100 text-gray-800">Unknown</Badge>;
+        return (
+          <Badge variant="secondary" className="bg-muted text-muted-foreground border-0">
+            Unknown
+          </Badge>
+        );
     }
   };
 
@@ -266,66 +283,71 @@ export default function KodeTransaksiPage() {
         }
       />
 
-      <Card>
+      <Card className="overflow-hidden border shadow-sm">
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="px-4 py-3 w-[50px]"></th> {/* Kolom Panah */}
-                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="w-12 px-4 py-3.5 text-center" aria-label="Expand" />
+                  <th className="px-5 py-3.5 text-left font-medium text-muted-foreground w-[100px]">
                     Aksi
                   </th>
-                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-5 py-3.5 text-left font-medium text-muted-foreground min-w-[100px]">
                     Kode
                   </th>
-                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-5 py-3.5 text-left font-medium text-muted-foreground min-w-[120px]">
                     Module
                   </th>
-                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-5 py-3.5 text-left font-medium text-muted-foreground min-w-[180px]">
                     Deskripsi
                   </th>
-                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-5 py-3.5 text-left font-medium text-muted-foreground w-[100px]">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-5 py-3.5 text-left font-medium text-muted-foreground w-[100px]">
                     Dibuat
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white">
+              <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-4 text-center">
-                      <div className="animate-pulse flex justify-center gap-2">
-                        <Loader2 className="animate-spin h-5 w-5 text-gray-400" />
-                        Loading...
+                    <td colSpan={7} className="px-6 py-16 text-center">
+                      <div className="flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                        <Loader2 className="h-8 w-8 animate-spin" />
+                        <span className="text-sm">Memuat data...</span>
                       </div>
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={7}
-                      className="px-6 py-4 text-center text-gray-500"
-                    >
-                      Tidak ada data
+                    <td colSpan={7} className="px-6 py-16 text-center">
+                      <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                        <Inbox className="h-12 w-12 opacity-40" />
+                        <span className="text-sm font-medium">Tidak ada data</span>
+                        <span className="text-xs">Ubah filter atau tambah kode transaksi baru.</span>
+                      </div>
                     </td>
                   </tr>
                 ) : (
                   filtered.map((item) => (
-                    // Fragment digunakan karena kita me-render dua <tr> per item
-                    <tbody
-                      key={item.id}
-                      className="border-b last:border-0 hover:bg-gray-50 transition-colors"
-                    >
-                      <tr>
-                        <td className="px-4 py-4 text-center">
+                    <Fragment key={item.id}>
+                      <tr
+                        className={
+                          expandedId === item.id
+                            ? "border-b bg-muted/20 transition-colors"
+                            : "border-b border-border/50 transition-colors hover:bg-muted/30"
+                        }
+                      >
+                        <td className="px-4 py-3.5 text-center">
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-gray-500"
+                            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
                             onClick={() => toggleExpand(item.id)}
+                            aria-expanded={expandedId === item.id}
+                            aria-label={expandedId === item.id ? "Tutup rincian" : "Lihat rincian"}
                           >
                             {expandedId === item.id ? (
                               <ChevronUp className="h-4 w-4" />
@@ -334,59 +356,58 @@ export default function KodeTransaksiPage() {
                             )}
                           </Button>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-5 py-3.5">
                           <ActionsGroup
                             handleEdit={() => handleEdit(item)}
                             handleDelete={() => handleDelete(item.id)}
-                            // handleDetail tidak diperlukan lagi di tombol karena sudah ada expand row
                           />
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                        <td className="px-5 py-3.5 font-mono font-medium text-foreground">
                           {item.code}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-900">
+                        <td className="px-5 py-3.5 text-foreground">
                           {item.module}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
-                          {item.description}
+                        <td className="px-5 py-3.5 max-w-[240px] truncate text-muted-foreground" title={item.description}>
+                          {item.description || "—"}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-5 py-3.5">
                           {getStatusBadge(item.status)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-500">
-                          {new Date(item.created_at).toLocaleDateString(
-                            "id-ID"
-                          )}
+                        <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">
+                          {displayDate(item.created_at)}
                         </td>
                       </tr>
-
-                      {/* Expanded Row */}
                       {expandedId === item.id && (
                         <DetailRow id={item.id} colSpan={7} />
                       )}
-                    </tbody>
+                    </Fragment>
                   ))
                 )}
               </tbody>
             </table>
           </div>
         </CardContent>
+        <div className="flex items-center justify-between border-t bg-muted/20 px-5 py-3">
+          <p className="text-sm text-muted-foreground">
+            Halaman <span className="font-medium text-foreground">{currentPage}</span> dari{" "}
+            <span className="font-medium text-foreground">{lastPage}</span>
+            {filtered.length > 0 && (
+              <span className="ml-2">
+                · Menampilkan <span className="font-medium text-foreground">{filtered.length}</span> baris
+              </span>
+            )}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled>
+              Sebelumnya
+            </Button>
+            <Button variant="outline" size="sm" disabled>
+              Berikutnya
+            </Button>
+          </div>
+        </div>
       </Card>
-
-      {/* Pagination */}
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-600">
-          Halaman <b>{currentPage}</b> dari <b>{lastPage}</b>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled>
-            Sebelumnya
-          </Button>
-          <Button variant="outline" size="sm" disabled>
-            Berikutnya
-          </Button>
-        </div>
-      </div>
 
       {/* Create/Edit Modal */}
       <Dialog
