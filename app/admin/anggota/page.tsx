@@ -116,6 +116,13 @@ export default function AnggotaPage() {
     setCurrentPage(1);
   };
 
+  const goToPrevPage = () => {
+    setCurrentPage((p) => Math.max(1, p - 1));
+  };
+  const goToNextPage = () => {
+    setCurrentPage((p) => Math.min(lastPage, p + 1));
+  };
+
   const [deleteAnggota] = useDeleteAnggotaMutation();
 
   // export: client-side dari data tabel; import: API
@@ -501,18 +508,20 @@ export default function AnggotaPage() {
           </div>
           <div className="flex gap-2">
             <Button
+              type="button"
               variant="outline"
               size="sm"
               disabled={currentPage <= 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
+              onClick={goToPrevPage}
             >
               Sebelumnya
             </Button>
             <Button
+              type="button"
               variant="outline"
               size="sm"
-              disabled={currentPage >= lastPage}
-              onClick={() => setCurrentPage((p) => p + 1)}
+              disabled={currentPage >= lastPage || lastPage <= 0}
+              onClick={goToNextPage}
             >
               Berikutnya
             </Button>

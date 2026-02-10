@@ -23,6 +23,13 @@ import FormSimpanan from "@/components/form-modal/simpanan-form";
 import { useGetSimpananCategoryListQuery } from "@/services/master/simpanan-category.service";
 import { useGetUsersListQuery } from "@/services/koperasi-service/users-management.service";
 import { Combobox } from "@/components/ui/combo-box";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { FetchBaseQueryError } from "@reduxjs/toolkit/query";
 import { SerializedError } from "@reduxjs/toolkit";
 import { Filter, Plus, Download, Upload, Loader2 } from "lucide-react";
@@ -52,14 +59,22 @@ function extractMessageFromFetchBaseQueryError(
   return "Terjadi kesalahan";
 }
 
+const PER_PAGE_OPTIONS = [10, 50, 100, "all"] as const;
+type PerPageValue = (typeof PER_PAGE_OPTIONS)[number];
+const PAGINATE_ALL = 99999;
+
+function getPaginateValue(perPage: PerPageValue): number {
+  return perPage === "all" ? PAGINATE_ALL : perPage;
+}
+
 export default function SimpananAnggotaPage() {
-  const itemsPerPage = 10;
+  const [perPage, setPerPage] = useState<PerPageValue>(10);
   const [currentPage, setCurrentPage] = useState(1);
 
   // wallet list (Data Utama Tabel)
   const { data, isLoading, isFetching, refetch } = useGetWalletListQuery({
     page: currentPage,
-    paginate: itemsPerPage,
+    paginate: getPaginateValue(perPage),
   });
 
   // Refetch data simpanan setiap kali currentPage berubah
@@ -125,6 +140,14 @@ export default function SimpananAnggotaPage() {
     [data]
   );
   const lastPage = data?.last_page ?? 1;
+  const total = data?.total ?? 0;
+
+  const handlePerPageChange = (value: string) => {
+    const next =
+      value === "all" ? "all" : (Number(value) as 10 | 50 | 100);
+    setPerPage(next);
+    setCurrentPage(1);
+  };
 
   // modal form state
   const { isOpen, openModal, closeModal } = useModal();
@@ -536,15 +559,37 @@ export default function SimpananAnggotaPage() {
             </tbody>
           </table>
         </CardContent>
-         {/* Pagination footer... */}
-         <div className="p-4 flex items-center justify-between bg-muted">
-          <div className="text-sm">
-            Halaman <strong>{currentPage}</strong> dari{" "}
-            <strong>{lastPage}</strong>
+        <div className="p-4 flex flex-wrap items-center justify-between gap-3 bg-muted">
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="text-sm text-muted-foreground">
+              Tampilkan per halaman:
+            </span>
+            <Select
+              value={perPage === "all" ? "all" : String(perPage)}
+              onValueChange={handlePerPageChange}
+            >
+              <SelectTrigger className="w-[100px] h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+                <SelectItem value="all">Semua</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-sm text-muted-foreground">
+              Halaman <strong>{currentPage}</strong> dari{" "}
+              <strong>{lastPage}</strong>
+              {total > 0 && (
+                <> · Total <strong>{total}</strong> rekening</>
+              )}
+            </span>
           </div>
           <div className="flex gap-2">
             <Button
               variant="outline"
+              size="sm"
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => p - 1)}
             >
@@ -552,6 +597,7 @@ export default function SimpananAnggotaPage() {
             </Button>
             <Button
               variant="outline"
+              size="sm"
               disabled={currentPage >= lastPage}
               onClick={() => setCurrentPage((p) => p + 1)}
             >

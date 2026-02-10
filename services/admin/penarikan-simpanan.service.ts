@@ -121,7 +121,7 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
     // Wallet endpoints (added)
     // ===========================
 
-    // 🔍 Get Wallet List
+    // 🔍 Get Wallet List (format response sama seperti getAnggotaList: code, message, data.{ data, last_page, current_page, total, per_page })
     getWalletList: builder.query<
       Paginated<Wallet>,
       {
@@ -149,8 +149,23 @@ const penarikanSimpananApi = apiSlice.injectEndpoints({
           ...(search ? { search } : {}),
         },
       }),
-      transformResponse: (response: ApiResponse<Paginated<Wallet>>) =>
-        response.data,
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: {
+          current_page: number;
+          data: Wallet[];
+          last_page: number;
+          total: number;
+          per_page: number;
+        };
+      }) => ({
+        data: response.data.data,
+        last_page: response.data.last_page,
+        current_page: response.data.current_page,
+        total: response.data.total,
+        per_page: response.data.per_page,
+      }),
     }),
 
     // ➕ Create Simpanan (Input)

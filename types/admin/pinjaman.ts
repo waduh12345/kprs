@@ -252,3 +252,35 @@ export interface PinjamanNominatifResponse {
     total: number;
   };
 }
+
+/** Path API template import pinjaman (xlsx). GET /pinjaman/import/template */
+export const PINJAMAN_IMPORT_TEMPLATE_PATH = "/pinjaman/import/template";
+
+/** Kolektibilitas (net performance) – per kategori */
+export type KolektibilitasKategori =
+  | "Lancar"
+  | "DPK"
+  | "Kurang Lancar"
+  | "Diragukan"
+  | "Macet";
+
+export interface KolektibilitasSummary {
+  kategori: KolektibilitasKategori;
+  outstanding_pokok: number;
+  jumlah_rekening: number;
+}
+
+/** Response POST /pinjaman/import – import pinjaman (xlsx/csv) + pembayaran yang sudah ada */
+export interface PinjamanImportResponse {
+  message: string;
+  reference: string;
+  processed: number;
+  failed: number;
+  errors: Record<number, string>;
+}
+
+/** Body POST /pinjaman/export – export pinjaman (queue, notifikasi saat selesai) */
+export interface PinjamanExportParams {
+  from_date: string;
+  to_date: string;
+}

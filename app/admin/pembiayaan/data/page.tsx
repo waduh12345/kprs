@@ -4,7 +4,16 @@ import { useMemo, useState } from "react";
 import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -18,9 +27,11 @@ import {
   useUpdatePinjamanMutation,
   useDeletePinjamanMutation,
   useUpdatePinjamanStatusMutation,
+  useLazyGetPinjamanImportTemplateQuery,
+  useImportPinjamanExcelMutation,
 } from "@/services/admin/pinjaman.service";
 import { useCreatePaymentMutation } from "@/services/installment.service";
-import { Pinjaman } from "@/types/admin/pinjaman";
+import type { Pinjaman, PinjamanImportResponse } from "@/types/admin/pinjaman";
 import FormPembiayaan from "@/components/form-modal/pinjaman-form";
 import { useGetPinjamanCategoryListQuery } from "@/services/master/pinjaman-category.service";
 import { useGetAnggotaListQuery } from "@/services/koperasi-service/anggota.service";
@@ -33,6 +44,10 @@ import {
   CreditCard,
   DollarSign,
   Calendar,
+  Upload,
+  Loader2,
+  RotateCcw,
+  FileSpreadsheet,
 } from "lucide-react";
 import ActionsGroup from "@/components/admin-components/actions-group";
 
@@ -61,6 +76,13 @@ export default function PinjamanAnggotaPage() {
   const [approvalDate, setApprovalDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   const [isExporting, setIsExporting] = useState(false);
+  const [fileToImport, setFileToImport] = useState<File | null>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+
+  const [getPinjamanTemplate, { isLoading: isTemplateLoading }] =
+    useLazyGetPinjamanImportTemplateQuery();
+  const [importPinjamanExcel, { isLoading: isImporting }] =
+    useImportPinjamanExcelMutation();
 
   // Pagination
   const itemsPerPage = 10;
@@ -288,6 +310,84 @@ export default function PinjamanAnggotaPage() {
     }
   };
 
+  /** Unduh template import pinjaman (.xlsx) dari GET /pinjaman/import/template */
+  const handleDownloadTemplate = async () => {
+    try {
+      const result = await getPinjamanTemplate();
+      if (result.error || !result.data) {
+        const msg =
+          result.error && "message" in result.error
+            ? String(result.error.message)
+            : "Gagal mengambil template";
+        throw new Error(msg);
+      }
+      const url = URL.createObjectURL(result.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "template-pinjaman.xlsx";
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 200);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Tidak dapat mengunduh template.";
+      void Swal.fire({ icon: "error", title: "Gagal", text: message });
+    }
+  };
+
+  /** Import Excel pinjaman – POST /pinjaman/import */
+  const handleImportExcel = async () => {
+    if (isImporting || !fileToImport) return;
+    const file = fileToImport;
+    if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
+      void Swal.fire(
+        "Gagal",
+        "Format file harus Excel (.xlsx, .xls) atau CSV.",
+        "error"
+      );
+      return;
+    }
+    const { isConfirmed } = await Swal.fire({
+      title: "Konfirmasi Import Pinjaman",
+      html: `Anda akan mengunggah file: <strong>${file.name}</strong>. Data pinjaman akan diproses sesuai isi file. Lanjutkan?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Unggah & Proses",
+    });
+    if (!isConfirmed) return;
+    try {
+      const response = await importPinjamanExcel({ file }).unwrap();
+      await refetch();
+      const data = response.data as PinjamanImportResponse | undefined;
+      const detail =
+        data != null
+          ? `Referensi: ${data.reference ?? "-"}. Berhasil: ${data.processed ?? 0}, Gagal: ${data.failed ?? 0}.`
+          : "";
+      void Swal.fire({
+        icon: "success",
+        title: "Import Berhasil",
+        text: response.message
+          ? `${response.message}${detail ? ` ${detail}` : ""}`
+          : `File diproses. ${detail}`,
+      });
+      setFileToImport(null);
+      setImportModalOpen(false);
+      const input = document.getElementById("file_import_pinjaman") as HTMLInputElement | null;
+      if (input) input.value = "";
+    } catch (err) {
+      console.error(err);
+      void Swal.fire(
+        "Gagal",
+        (err as { data?: { message?: string }; message?: string })?.data?.message ||
+          (err as Error)?.message ||
+          "Import gagal diproses.",
+        "error"
+      );
+    }
+  };
+
   const handleExport = async () => {
     if (filteredData.length === 0) {
       Swal.fire("Info", "Tidak bisa export karena datanya kosong", "info");
@@ -494,38 +594,167 @@ export default function PinjamanAnggotaPage() {
             </select>
           </div>
 
-          <div className="shrink-0 flex flex-wrap items-center gap-2">
-            <div className="flex gap-2">
-              <Button
-                onClick={handleExport}
-                variant="green"
-                disabled={isExporting}
-                className="h-10"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                {isExporting ? "Exporting..." : "Export Excel"}
-              </Button>
-              <Button className="h-10" onClick={() => openModal()}>
-                <Plus className="h-4 w-4" />
-                Pinjaman
-              </Button>
-            </div>
+          <div className="shrink-0 flex flex-wrap items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 shrink-0"
+                  onClick={handleDownloadTemplate}
+                  disabled={isTemplateLoading}
+                  title="Unduh Template"
+                >
+                  {isTemplateLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Unduh Template</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 shrink-0"
+                  onClick={() => {
+                    setFileToImport(null);
+                    setImportModalOpen(true);
+                  }}
+                  title="Import Excel"
+                >
+                  <Upload className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Import Excel</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="green"
+                  size="icon"
+                  className="h-9 w-9 shrink-0"
+                  onClick={handleExport}
+                  disabled={isExporting}
+                  title="Export Excel"
+                >
+                  {isExporting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Export Excel</p>
+              </TooltipContent>
+            </Tooltip>
+
             <Button
-              variant="destructive"
-              className="h-10"
-              onClick={() =>
-                setFilters({
-                  category_id: "",
-                  status: "",
-                  search: "",
-                })
-              }
+              type="button"
+              size="sm"
+              className="h-9 shrink-0"
+              onClick={() => openModal()}
             >
-              Reset Filter
+              <Plus className="h-4 w-4 mr-1.5" />
+              Pinjaman
             </Button>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-9 w-9 shrink-0"
+                  onClick={() =>
+                    setFilters({
+                      category_id: "",
+                      status: "",
+                      search: "",
+                    })
+                  }
+                  title="Reset Filter"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Reset Filter</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </div>
+
+      {/* Modal Import Excel */}
+      <Dialog open={importModalOpen} onOpenChange={setImportModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Import Excel Pinjaman</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="file_import_pinjaman">Pilih file (.xlsx, .xls, .csv)</Label>
+              <Input
+                id="file_import_pinjaman"
+                type="file"
+                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                className="w-full"
+                onChange={(e) => setFileToImport(e.target.files?.[0] ?? null)}
+                disabled={isImporting}
+              />
+              {fileToImport && (
+                <p className="text-sm text-muted-foreground">
+                  File: {fileToImport.name}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setImportModalOpen(false);
+                setFileToImport(null);
+              }}
+              disabled={isImporting}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleImportExcel()}
+              disabled={isImporting || !fileToImport}
+            >
+              {isImporting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Memproses...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Unggah & Proses
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Data Table */}
       <Card>

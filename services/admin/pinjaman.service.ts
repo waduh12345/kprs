@@ -1,8 +1,8 @@
 import { apiSlice } from "../base-query";
-import { 
-  Pinjaman, 
-  PinjamanResponse, 
-  CreatePinjamanRequest, 
+import {
+  Pinjaman,
+  PinjamanResponse,
+  CreatePinjamanRequest,
   UpdatePinjamanRequest,
   PaymentHistory,
   PaymentHistoryResponse,
@@ -10,7 +10,12 @@ import {
   PinjamanMutasi,
   PinjamanMutasiResponse,
   PinjamanNominatif,
-  PinjamanNominatifResponse
+  PinjamanNominatifResponse,
+} from "@/types/admin/pinjaman";
+import type {
+  KolektibilitasSummary,
+  PinjamanExportParams,
+  PinjamanImportResponse,
 } from "@/types/admin/pinjaman";
 
 export const pinjamanApi = apiSlice.injectEndpoints({
@@ -564,6 +569,77 @@ export const pinjamanApi = apiSlice.injectEndpoints({
         total_admin_fee: typeof response.data === "string" ? Number(response.data) : response.data
       }),
     }),
+    getPinjamanKolektibilitas: builder.query<
+      KolektibilitasSummary[],
+      { as_of_date?: string; user_id?: number } | void
+    >({
+      query: (params) => ({
+        url: `/pinjaman/report/kolektibilitas`,
+        method: "GET",
+        params: params ?? {},
+      }),
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: KolektibilitasSummary[];
+      }) => response.data,
+    }),
+
+    // Import Pinjaman
+    // GET /pinjaman/import/template – unduh template import pinjaman (xlsx)
+    getPinjamanImportTemplate: builder.query<Blob, void>({
+      query: () => ({
+        url: `/pinjaman/import/template`,
+        method: "GET",
+        responseHandler: async (response) => {
+          if (!response.ok)
+            throw new Error("Gagal mengambil template import pinjaman");
+          return await response.blob();
+        },
+      }),
+    }),
+    // POST /pinjaman/import – import pinjaman (xlsx/csv) + pembayaran yang sudah ada
+    importPinjamanExcel: builder.mutation<
+      { code: number; message: string; data?: PinjamanImportResponse },
+      { file: File }
+    >({
+      query: ({ file }) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        return {
+          url: `/pinjaman/import`,
+          method: "POST",
+          body: formData,
+        };
+      },
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data?: PinjamanImportResponse;
+      }) => ({
+        code: response.code,
+        message: response.message,
+        data: response.data,
+      }),
+    }),
+
+    // Export Pinjaman
+    // POST /pinjaman/export – export pinjaman (queue, notifikasi saat selesai)
+    exportPinjaman: builder.mutation<
+      { code: number; message: string },
+      PinjamanExportParams
+    >({
+      query: ({ from_date, to_date }) => ({
+        url: `/pinjaman/export`,
+        method: "POST",
+        body: { from_date, to_date },
+        headers: { "Content-Type": "application/json" },
+      }),
+      transformResponse: (response: { code: number; message: string }) => ({
+        code: response.code,
+        message: response.message,
+      }),
+    }),
   }),
   overrideExisting: false,
 });
@@ -590,4 +666,8 @@ export const {
   useGetPinjamanRealizationQuery,
   useGetPinjamanApprovedQuery,
   useGetPinjamanAdminFeeQuery,
+  useGetPinjamanKolektibilitasQuery,
+  useLazyGetPinjamanImportTemplateQuery,
+  useImportPinjamanExcelMutation,
+  useExportPinjamanMutation,
 } = pinjamanApi;

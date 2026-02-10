@@ -12,30 +12,24 @@ import {
   FileDown,
   Percent,
   TrendingDown,
-  TrendingUp,
   Target,
-  Users,
   DollarSign,
+  Loader2,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { Separator } from "@/components/ui/separator";
+import { useGetPinjamanKolektibilitasQuery } from "@/services/admin/pinjaman.service";
+import type {
+  KolektibilitasSummary,
+  KolektibilitasKategori,
+} from "@/types/admin/pinjaman";
 
-// --- DUMMY DATA & TYPES ---
-
-interface KolektibilitasSummary {
-  kategori: "Lancar" | "DPK" | "Kurang Lancar" | "Diragukan" | "Macet";
-  outstanding_pokok: number;
-  jumlah_rekening: number;
+/** Ubah YYYY-MM ke tanggal akhir bulan (YYYY-MM-DD) untuk as_of_date */
+function getLastDayOfMonth(monthStr: string): string {
+  const [y, m] = monthStr.split("-").map(Number);
+  const last = new Date(y, m, 0);
+  return last.toISOString().slice(0, 10);
 }
-
-// Data simulasi untuk bulan ini (Posisi Akhir Bulan)
-const dummyMonthlyData: KolektibilitasSummary[] = [
-  { kategori: "Lancar", outstanding_pokok: 900000000, jumlah_rekening: 450 },
-  { kategori: "DPK", outstanding_pokok: 35000000, jumlah_rekening: 15 }, // Dalam Perhatian Khusus
-  { kategori: "Kurang Lancar", outstanding_pokok: 15000000, jumlah_rekening: 5 },
-  { kategori: "Diragukan", outstanding_pokok: 5000000, jumlah_rekening: 2 },
-  { kategori: "Macet", outstanding_pokok: 10000000, jumlah_rekening: 3 },
-];
 
 // --- HELPER FUNCTIONS ---
 
@@ -52,7 +46,7 @@ const formatPercentage = (number: number) => {
     return `${(number * 100).toFixed(2)}%`;
 }
 
-const getKolektibilitasColor = (kategori: KolektibilitasSummary["kategori"]) => {
+const getKolektibilitasColor = (kategori: KolektibilitasKategori) => {
     switch (kategori) {
         case "Lancar": return "bg-green-100 text-green-700";
         case "DPK": return "bg-yellow-100 text-yellow-700";
@@ -67,8 +61,24 @@ const getKolektibilitasColor = (kategori: KolektibilitasSummary["kategori"]) => 
 
 export default function LaporanPerformancePage() {
   const today = new Date().toISOString().substring(0, 7);
-  const [dataKolektibilitas] = useState<KolektibilitasSummary[]>(dummyMonthlyData);
-  const [posisiPeriode, setPosisiPeriode] = useState(today); // Posisi Laporan (YYYY-MM)
+  const [posisiPeriode, setPosisiPeriode] = useState(today);
+
+  const asOfDate = useMemo(
+    () => getLastDayOfMonth(posisiPeriode),
+    [posisiPeriode]
+  );
+
+  const {
+    data: dataKolektibilitasRaw,
+    isLoading: isLoadingKolektibilitas,
+    isError: isErrorKolektibilitas,
+    refetch: refetchKolektibilitas,
+  } = useGetPinjamanKolektibilitasQuery({ as_of_date: asOfDate });
+
+  const dataKolektibilitas: KolektibilitasSummary[] = useMemo(
+    () => Array.isArray(dataKolektibilitasRaw) ? dataKolektibilitasRaw : [],
+    [dataKolektibilitasRaw]
+  );
 
   // --- RASIO PERHITUNGAN (NPL/NPF) ---
   const performanceRatios = useMemo(() => {
@@ -104,7 +114,7 @@ export default function LaporanPerformancePage() {
     Swal.fire({
       icon: "info",
       title: "Export Laporan Performance",
-      text: `Mengekspor Laporan Kualitas Pembiayaan posisi ${posisiPeriode}. (Simulasi)`,
+      text: `Mengekspor Laporan Kualitas Pembiayaan posisi ${posisiPeriode}.`,
       confirmButtonText: "Oke",
     });
   };
@@ -149,8 +159,17 @@ export default function LaporanPerformancePage() {
             <DollarSign className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatRupiah(performanceRatios.totalOutstanding)}</div>
-            <p className="text-xs text-muted-foreground">{performanceRatios.totalRekening} Rekening</p>
+            {isLoadingKolektibilitas ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-sm">Memuat...</span>
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{formatRupiah(performanceRatios.totalOutstanding)}</div>
+                <p className="text-xs text-muted-foreground">{performanceRatios.totalRekening} Rekening</p>
+              </>
+            )}
           </CardContent>
         </Card>
         
@@ -161,10 +180,19 @@ export default function LaporanPerformancePage() {
             <TrendingDown className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${performanceRatios.nplRatio > 0.05 ? 'text-red-600' : 'text-green-600'}`}>
-                {formatPercentage(performanceRatios.nplRatio)}
-            </div>
-            <p className="text-xs text-muted-foreground">Target Ideal: {'<'} 5%</p>
+            {isLoadingKolektibilitas ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-sm">Memuat...</span>
+              </div>
+            ) : (
+              <>
+                <div className={`text-2xl font-bold ${performanceRatios.nplRatio > 0.05 ? 'text-red-600' : 'text-green-600'}`}>
+                  {formatPercentage(performanceRatios.nplRatio)}
+                </div>
+                <p className="text-xs text-muted-foreground">Target Ideal: {'<'} 5%</p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -175,8 +203,17 @@ export default function LaporanPerformancePage() {
             <DollarSign className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatRupiah(performanceRatios.totalNPL)}</div>
-            <p className="text-xs text-muted-foreground">Outstanding Kol. 2 s/d 5</p>
+            {isLoadingKolektibilitas ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-sm">Memuat...</span>
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{formatRupiah(performanceRatios.totalNPL)}</div>
+                <p className="text-xs text-muted-foreground">Outstanding Kol. 2 s/d 5</p>
+              </>
+            )}
           </CardContent>
         </Card>
         
@@ -187,10 +224,19 @@ export default function LaporanPerformancePage() {
             <Percent className="h-4 w-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${performanceRatios.nonLancarRatio > 0.01 ? 'text-orange-600' : 'text-green-600'}`}>
-                {formatPercentage(performanceRatios.nonLancarRatio)}
-            </div>
-            <p className="text-xs text-muted-foreground">Outstanding Kol. 3 s/d 5</p>
+            {isLoadingKolektibilitas ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-sm">Memuat...</span>
+              </div>
+            ) : (
+              <>
+                <div className={`text-2xl font-bold ${performanceRatios.nonLancarRatio > 0.01 ? 'text-orange-600' : 'text-green-600'}`}>
+                  {formatPercentage(performanceRatios.nonLancarRatio)}
+                </div>
+                <p className="text-xs text-muted-foreground">Outstanding Kol. 3 s/d 5</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -222,34 +268,61 @@ export default function LaporanPerformancePage() {
               </tr>
             </thead>
             <tbody>
-              {dataKolektibilitas.map((item) => {
-                const percentage = item.outstanding_pokok / performanceRatios.totalOutstanding;
-                return (
-                  <tr key={item.kategori} className="border-t hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <Badge className={getKolektibilitasColor(item.kategori)}>
-                        {item.kategori}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-gray-800">
-                      {formatRupiah(item.outstanding_pokok)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
-                      {formatPercentage(percentage)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-right text-gray-600">
-                      {item.jumlah_rekening}
-                    </td>
-                  </tr>
-                );
-              })}
-              {/* Total Row */}
-              <tr className="border-t-2 border-gray-700 bg-gray-100 font-bold">
+              {isLoadingKolektibilitas ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin inline-block mr-2" />
+                    Memuat data kolektibilitas...
+                  </td>
+                </tr>
+              ) : isErrorKolektibilitas ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-destructive">
+                    Gagal memuat data.{" "}
+                    <Button variant="link" size="sm" className="p-0 h-auto" onClick={() => refetchKolektibilitas()}>
+                      Coba lagi
+                    </Button>
+                  </td>
+                </tr>
+              ) : dataKolektibilitas.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                    Tidak ada data kolektibilitas untuk periode ini.
+                  </td>
+                </tr>
+              ) : (
+                <>
+                  {dataKolektibilitas.map((item) => {
+                    const totalOut = performanceRatios.totalOutstanding || 1;
+                    const percentage = item.outstanding_pokok / totalOut;
+                    return (
+                      <tr key={item.kategori} className="border-t hover:bg-gray-50">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <Badge className={getKolektibilitasColor(item.kategori)}>
+                            {item.kategori}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-gray-800">
+                          {formatRupiah(item.outstanding_pokok)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
+                          {formatPercentage(percentage)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right text-gray-600">
+                          {item.jumlah_rekening}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {/* Total Row */}
+                  <tr className="border-t-2 border-gray-700 bg-gray-100 font-bold">
                     <td className="px-4 py-3">TOTAL KESELURUHAN</td>
                     <td className="px-4 py-3 text-right text-lg text-primary">{formatRupiah(performanceRatios.totalOutstanding)}</td>
                     <td className="px-4 py-3 text-right">100.00%</td>
                     <td className="px-4 py-3 text-right">{performanceRatios.totalRekening}</td>
-              </tr>
+                  </tr>
+                </>
+              )}
             </tbody>
           </table>
         </CardContent>

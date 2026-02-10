@@ -140,26 +140,6 @@ export default function LaporanPerubahanStatusPage() {
                             `/admin/anggota/add-data?mode=detail&id=${item.id}`
                           )
                         }
-                        additionalActions={
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  router.push(
-                                    `/admin/anggota/history?anggota_id=${item.id}`
-                                  )
-                                }
-                              >
-                                <HistoryIcon className="size-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Riwayat Anggota</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        }
                       />
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap font-mono text-xs">

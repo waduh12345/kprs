@@ -168,7 +168,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
     },
     {
       id: "pembiayaan",
-      label: "Pembiayaan",
+      label: "Pinjaman",
       icon: <FaMoneyBillWave className="h-5 w-5" />,
       href: "#",
       children: [
@@ -179,27 +179,27 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         },
         {
           id: "pembiayaan/data-pembiayaan",
-          label: "Data Pembiayaan",
+          label: "Data Pinjaman",
           href: "/admin/pembiayaan/data",
         },
         {
           id: "pembiayaan/transaksi",
-          label: "Transaksi Pembiayaan",
+          label: "Transaksi Pinjaman",
           href: "#",
           sub_children: [
             {
               id: "pembiayaan/transaksi/realisasi",
-              label: "Realisasi Pembiayaan",
+              label: "Realisasi Pinjaman",
               href: "/admin/pembiayaan/transaksi/realisasi",
             },
             {
               id: "pembiayaan/transaksi/angsuran",
-              label: "Angsuran Pembiayaan",
+              label: "Angsuran Pinjaman",
               href: "/admin/pembiayaan/transaksi/angsuran",
             },
             {
               id: "pembiayaan/transaksi/pelunasan",
-              label: "Pelunasan Pembiayaan",
+              label: "Pelunasan Pinjaman",
               href: "/admin/pembiayaan/transaksi/pelunasan",
             },
           ],
@@ -211,22 +211,22 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         },
         {
           id: "pembiayaan/laporan-pembiayaan",
-          label: "Laporan Pembiayaan",
+          label: "Laporan Pinjaman",
           href: "#",
           sub_children: [
             {
               id: "pembiayaan/laporan/mutasi",
-              label: "Mutasi Pembiayaan",
+              label: "Mutasi Pinjaman",
               href: "/admin/pembiayaan/laporan/mutasi",
             },
             {
               id: "pembiayaan/laporan/nominatif",
-              label: "Nominatif Pembiayaan",
+              label: "Nominatif Pinjaman",
               href: "/admin/pembiayaan/laporan/nominatif",
             },
             {
               id: "pembiayaan/laporan/realisasi",
-              label: "Realisasi Pembiayaan",
+              label: "Realisasi Pinjaman",
               href: "/admin/pembiayaan/laporan/realisasi",
             },
             {

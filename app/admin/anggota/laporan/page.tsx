@@ -160,52 +160,6 @@ export default function LaporanAnggotaAktifPage() {
                             `/admin/anggota/add-data?mode=detail&id=${item.id}`
                           )
                         }
-                        
-                        additionalActions={
-                          <div className="flex items-center gap-2">
-                            {/* History Anggota */}
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    router.push(
-                                      `/admin/anggota/history?anggota_id=${item.id}` // Arahkan ke rute yang lebih spesifik
-                                    )
-                                  }
-                                >
-                                  <HistoryIcon className="size-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>History Anggota</p>
-                              </TooltipContent>
-                            </Tooltip>
-
-                            {/* User Bank */}
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    router.push(
-                                      `/admin/anggota/user-bank?user_id=${
-                                        item.user_id ?? item.id
-                                      }`
-                                    )
-                                  }
-                                >
-                                  <LandmarkIcon className="size-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Data Rekening Bank</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </div>
-                        }
                       />
                     </td>
                     <td className="px-4 py-2 whitespace-nowrap">
