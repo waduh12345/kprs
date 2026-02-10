@@ -4,102 +4,16 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Printer, Building2, Search, User, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGetAnggotaListQuery } from "@/services/koperasi-service/anggota.service";
+import { useGetSimpananReportByAnggotaQuery } from "@/services/admin/simpanan/simpanan.service";
 import type { AnggotaKoperasi } from "@/types/koperasi-types/anggota";
+import type {
+  SimpananReportSummaryItem,
+  SimpananReportDetailItem,
+} from "@/types/admin/simpanan";
 
 // --- PENCARIAN ANGGOTA ---
 const SEARCH_MIN_CHARS = 3;
 const SEARCH_DEBOUNCE_MS = 400;
-
-// --- TYPES & DATA ---
-
-// Data Summary (Tabel Atas)
-const SUMMARY_DATA = [
-  {
-    id: 1,
-    name: "HERMANSJAH WIDJAJA",
-    account: "0103003567",
-    balance: 11324204.04,
-  },
-  {
-    id: 2,
-    name: "HERMANSJAH WIDJAJA",
-    account: "0103004232",
-    balance: 14108488.26,
-  },
-];
-
-// Data Detail (Tabel Bawah)
-const DETAIL_DATA = [
-  {
-    id: 1,
-    marketing_code: "MCH-HW",
-    bilyet: "AA002340",
-    jatuh_tempo: "14-Jan-2026",
-    jangka: 6,
-    rate: 8.5,
-    cb: "",
-    nasabah: "LISA WAHAP",
-    nominal: 250000000.0,
-    aro: 0.0,
-    notes: "",
-  },
-  {
-    id: 2,
-    marketing_code: "MCH-HW",
-    bilyet: "AA002341",
-    jatuh_tempo: "14-Jan-2026",
-    jangka: 6,
-    rate: 8.5,
-    cb: "",
-    nasabah: "LISA WAHAP",
-    nominal: 250000000.0,
-    aro: 0.0,
-    notes: "",
-  },
-  {
-    id: 3,
-    marketing_code: "MCH-HW",
-    bilyet: "AA002046",
-    jatuh_tempo: "15-Jan-2026",
-    jangka: 6,
-    rate: 9.0,
-    cb: "",
-    nasabah: "HARSONO ERDUARTE HERMAWAN",
-    nominal: 104016712.69,
-    aro: 108264014.69,
-    notes: "",
-  },
-  {
-    id: 4,
-    marketing_code: "MCH-HW",
-    bilyet: "AA002344",
-    jatuh_tempo: "17-Jan-2026",
-    jangka: 6,
-    rate: 8.5,
-    cb: "0",
-    nasabah: "WONG, YANY",
-    nominal: 100000000.0,
-    aro: 103856438.5,
-    notes: "",
-  },
-  {
-    id: 5,
-    marketing_code: "MCH-HW",
-    bilyet: "AA002093",
-    jatuh_tempo: "18-Feb-2026",
-    jangka: 3,
-    rate: 9.0,
-    cb: "",
-    nasabah: "HERMANSJAH WIDJAJA",
-    nominal: 100000000.0,
-    aro: 0.0,
-    notes: "",
-  },
-];
-
-// Calculate totals
-const TOTAL_SALDO = 25432692.3;
-const TOTAL_SIMPANAN_BERJANGKA = 2000000000.0;
 
 // Utility for currency formatting (IDR)
 const formatCurrency = (val: number) => {
@@ -132,6 +46,24 @@ export default function LaporanAnggotaPage() {
   const anggotaList = useMemo(() => anggotaData?.data ?? [], [anggotaData]);
   const showRecommendations = showDropdown && memberSearchInput.length >= SEARCH_MIN_CHARS;
   const isSearching = anggotaLoading || anggotaFetching;
+
+  // Laporan simpanan per anggota (GET /simpanan/report/member?anggota_id=)
+  const { data: reportData, isLoading: reportLoading } =
+    useGetSimpananReportByAnggotaQuery(
+      { anggota_id: selectedMember?.id ?? 0 },
+      { skip: !selectedMember?.id }
+    );
+
+  const summaryData: SimpananReportSummaryItem[] = useMemo(
+    () => (reportData?.summary ?? []),
+    [reportData?.summary]
+  );
+  const detailData: SimpananReportDetailItem[] = useMemo(
+    () => (reportData?.detail ?? []),
+    [reportData?.detail]
+  );
+  const totalSaldo = reportData?.total_saldo ?? 0;
+  const totalSimpananBerjangka = reportData?.total_simpanan_berjangka ?? 0;
 
   // Click outside to close dropdown
   useEffect(() => {
@@ -394,20 +326,29 @@ export default function LaporanAnggotaPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-red-100 text-xs text-gray-800">
-                {SUMMARY_DATA.map((item) => (
-                  <tr key={item.id} className="hover:bg-red-50">
-                    <td className="px-2 py-1.5 text-center">{item.id}</td>
-                    <td className="px-2 py-1.5 font-medium border-l border-r border-red-50">
-                      {item.name}
-                    </td>
-                    <td className="px-2 py-1.5 text-center border-r border-red-50 font-mono">
-                      {item.account}
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-mono font-bold">
-                      {formatCurrency(item.balance)}
+                {reportLoading ? (
+                  <tr>
+                    <td colSpan={4} className="px-2 py-6 text-center text-gray-500">
+                      <Loader2 className="w-6 h-6 animate-spin inline-block mr-2" />
+                      Memuat data summary...
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  summaryData.map((item, index) => (
+                    <tr key={item.id} className="hover:bg-red-50">
+                      <td className="px-2 py-1.5 text-center">{index + 1}</td>
+                      <td className="px-2 py-1.5 font-medium border-l border-r border-red-50">
+                        {item.name}
+                      </td>
+                      <td className="px-2 py-1.5 text-center border-r border-red-50 font-mono">
+                        {item.account}
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-mono font-bold">
+                        {formatCurrency(item.balance)}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
               <tfoot className="bg-red-50 font-bold text-red-900 border-t border-red-200 text-xs">
                 <tr>
@@ -415,7 +356,7 @@ export default function LaporanAnggotaPage() {
                     Total Simpanan
                   </td>
                   <td className="px-2 py-1.5 text-right font-mono">
-                    {formatCurrency(TOTAL_SALDO)}
+                    {formatCurrency(totalSaldo)}
                   </td>
                 </tr>
               </tfoot>
@@ -461,44 +402,53 @@ export default function LaporanAnggotaPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-red-100 text-gray-700">
-                {DETAIL_DATA.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-red-50 transition-colors"
-                  >
-                    <td className="px-1 py-1 text-center border-r border-red-50">
-                      {item.id}
+                {reportLoading ? (
+                  <tr>
+                    <td colSpan={11} className="px-2 py-6 text-center text-gray-500">
+                      <Loader2 className="w-6 h-6 animate-spin inline-block mr-2" />
+                      Memuat data detail...
                     </td>
-                    <td className="px-1 py-1 text-center border-r border-red-50 font-mono">
-                      {item.marketing_code}
-                    </td>
-                    <td className="px-1 py-1 text-center border-r border-red-50 font-mono">
-                      {item.bilyet}
-                    </td>
-                    <td className="px-1 py-1 text-center border-r border-red-50 whitespace-nowrap">
-                      {item.jatuh_tempo}
-                    </td>
-                    <td className="px-1 py-1 text-center border-r border-red-50">
-                      {item.jangka}
-                    </td>
-                    <td className="px-1 py-1 text-center border-r border-red-50 font-bold text-red-700">
-                      {item.rate.toFixed(2)}
-                    </td>
-                    <td className="px-1 py-1 text-center border-r border-red-50">
-                      {item.cb}
-                    </td>
-                    <td className="px-1 py-1 text-left border-r border-red-50 uppercase font-medium">
-                      {item.nasabah}
-                    </td>
-                    <td className="px-1 py-1 text-right border-r border-red-50 font-mono text-black">
-                      {formatCurrency(item.nominal)}
-                    </td>
-                    <td className="px-1 py-1 text-right border-r border-red-50 font-mono text-gray-500">
-                      {formatCurrency(item.aro)}
-                    </td>
-                    <td className="px-1 py-1 text-left">{item.notes}</td>
                   </tr>
-                ))}
+                ) : (
+                  detailData.map((item, index) => (
+                    <tr
+                      key={typeof item.id === "number" ? item.id : `${item.id}-${index}`}
+                      className="hover:bg-red-50 transition-colors"
+                    >
+                      <td className="px-1 py-1 text-center border-r border-red-50">
+                        {index + 1}
+                      </td>
+                      <td className="px-1 py-1 text-center border-r border-red-50 font-mono">
+                        {item.marketing_code}
+                      </td>
+                      <td className="px-1 py-1 text-center border-r border-red-50 font-mono">
+                        {item.bilyet}
+                      </td>
+                      <td className="px-1 py-1 text-center border-r border-red-50 whitespace-nowrap">
+                        {item.jatuh_tempo}
+                      </td>
+                      <td className="px-1 py-1 text-center border-r border-red-50">
+                        {item.jangka}
+                      </td>
+                      <td className="px-1 py-1 text-center border-r border-red-50 font-bold text-red-700">
+                        {Number(item.rate).toFixed(2)}
+                      </td>
+                      <td className="px-1 py-1 text-center border-r border-red-50">
+                        {item.cb}
+                      </td>
+                      <td className="px-1 py-1 text-left border-r border-red-50 uppercase font-medium">
+                        {item.nasabah}
+                      </td>
+                      <td className="px-1 py-1 text-right border-r border-red-50 font-mono text-black">
+                        {formatCurrency(item.nominal)}
+                      </td>
+                      <td className="px-1 py-1 text-right border-r border-red-50 font-mono text-gray-500">
+                        {formatCurrency(item.aro)}
+                      </td>
+                      <td className="px-1 py-1 text-left">{item.notes}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
               <tfoot className="bg-red-50 font-bold text-gray-900 border-t border-red-200 text-[10px]">
                 <tr>
@@ -509,7 +459,7 @@ export default function LaporanAnggotaPage() {
                     Total Simpanan Berjangka
                   </td>
                   <td className="px-2 py-1.5 text-right font-mono text-red-800">
-                    {formatCurrency(TOTAL_SIMPANAN_BERJANGKA)}
+                    {formatCurrency(totalSimpananBerjangka)}
                   </td>
                   <td colSpan={2}></td>
                 </tr>

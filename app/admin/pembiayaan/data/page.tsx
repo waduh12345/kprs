@@ -1119,11 +1119,13 @@ export default function PinjamanAnggotaPage() {
                         <thead className="bg-muted text-left">
                           <tr>
                             <th className="px-4 py-2">Bulan Ke</th>
-                            <th className="px-4 py-2">Nominal</th>
+                            <th className="px-4 py-2">Pokok</th>
+                            <th className="px-4 py-2">Bunga</th>
+                            <th className="px-4 py-2">Total</th>
                             <th className="px-4 py-2">Jatuh Tempo</th>
                             <th className="px-4 py-2">Tanggal Bayar</th>
                             <th className="px-4 py-2">Status</th>
-                            <th className="px-4 py-2">Aksi</th>
+                            {/* <th className="px-4 py-2">Aksi</th> */}
                           </tr>
                         </thead>
                         <tbody>
@@ -1144,7 +1146,13 @@ export default function PinjamanAnggotaPage() {
                                   {installment.month}
                                 </td>
                                 <td className="px-4 py-2 font-medium">
-                                  {formatCurrency(installment.remaining)}
+                                  {formatCurrency(installment.principal)}
+                                </td>
+                                <td className="px-4 py-2">
+                                  {formatCurrency(installment.bunga)}
+                                </td>
+                                <td className="px-4 py-2 font-medium">
+                                  {formatCurrency(installment.total)}
                                 </td>
                                 <td className="px-4 py-2">
                                   {new Date(
@@ -1176,7 +1184,7 @@ export default function PinjamanAnggotaPage() {
                                       : "Belum Bayar"}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-2">
+                                {/* <td className="px-4 py-2">
                                   <div className="flex gap-2">
                                     {!installment.status ? (
                                       <Button
@@ -1201,7 +1209,7 @@ export default function PinjamanAnggotaPage() {
                                       </div>
                                     )}
                                   </div>
-                                </td>
+                                </td> */}
                               </tr>
                             ))
                           )}

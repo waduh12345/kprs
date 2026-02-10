@@ -1,37 +1,57 @@
-import { apiSlice } from "@/services/base-query";
-import {
+import { apiSlice } from "../../base-query";
+import type {
+  ApiResponse,
   SimpananBerjangka,
-  Payment,
+  SimpananBerjangkaCairAwalResponse,
+  SimpananBerjangkaCairNormalResponse,
+  SimpananBerjangkaImportMigrasiResponse,
+  SimpananBerjangkaImportSampleResponse,
+  SimpananBerjangkaListParams,
+  SimpananBerjangkaPaginatedResponse,
+  SimpananBerjangkaStoreRequest,
+  SimpananBerjangkaUpdateRequest,
+  SimpananBerjangkaValidateRequest,
 } from "@/types/admin/simpanan/simpanan-berjangka";
 
-type UnknownRecord = Record<string, unknown>;
+function buildStoreFormData(payload: SimpananBerjangkaStoreRequest): FormData {
+  const form = new FormData();
+  form.append("anggota_id", String(payload.anggota_id));
+  form.append("date", payload.date);
+  form.append("nominal", String(payload.nominal));
+  form.append("type", payload.type);
+  if (payload.description != null) form.append("description", payload.description);
+  if (payload.cashback_id != null) form.append("cashback_id", String(payload.cashback_id));
 
-// Utility: hapus properti undefined/null
-function compactBody<T extends UnknownRecord>(obj: T): T {
-  const out = {} as T;
-  (Object.keys(obj) as (keyof T)[]).forEach((k) => {
-    const v = obj[k];
-    if (v !== undefined && v !== null) {
-      (out as UnknownRecord)[String(k)] = v;
-    }
-  });
-  return out as T;
+  if ("master_bilyet_berjangka_id" in payload) {
+    form.append("master_bilyet_berjangka_id", String(payload.master_bilyet_berjangka_id));
+  } else {
+    form.append("simpanan_berjangka_category_id", String(payload.simpanan_berjangka_category_id));
+    form.append("term_months", String(payload.term_months));
+    form.append("no_bilyet", payload.no_bilyet);
+    form.append("no_ao", payload.no_ao);
+  }
+
+  if (payload.type === "automatic") {
+    if (payload.payment_method) form.append("payment_method", payload.payment_method);
+    if (payload.payment_channel) form.append("payment_channel", payload.payment_channel);
+  }
+  if (payload.type === "manual" && payload.image) {
+    form.append("image", payload.image);
+  }
+
+  return form;
 }
 
-// typed Object.entries helper (menghindari `any`)
-function entries<T extends UnknownRecord>(obj: T): [string, T[keyof T]][] {
-  return Object.entries(obj) as [string, T[keyof T]][];
-}
-
-// type guard untuk File (aman di runtime browser)
-function isFile(v: unknown): v is File {
-  // guard in case of SSR where File is undefined
-  return typeof File !== "undefined" && v instanceof File;
-}
+const transformPaginated = (response: ApiResponse<SimpananBerjangkaPaginatedResponse>) => ({
+  data: response.data.data,
+  last_page: response.data.last_page,
+  current_page: response.data.current_page,
+  total: response.data.total,
+  per_page: response.data.per_page,
+});
 
 export const simpananBerjangkaApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    // Get list (with filters)
     getSimpananBerjangkaList: builder.query<
       {
         data: SimpananBerjangka[];
@@ -40,211 +60,157 @@ export const simpananBerjangkaApi = apiSlice.injectEndpoints({
         total: number;
         per_page: number;
       },
-      {
-        paginate?: number;
-        page?: number;
-        search?: string;
-        status?: number | string;
-        from_date?: string;
-        to_date?: string;
-        user_id?: number | string;
-        simpanan_berjangka_category_id?: number | string;
-      }
+      SimpananBerjangkaListParams | void
     >({
-      query: ({
-        paginate = 10,
-        page = 1,
-        search = "",
-        status = undefined,
-        from_date = "",
-        to_date = "",
-        user_id = undefined,
-        simpanan_berjangka_category_id = undefined,
-      }) => {
-        const params = new URLSearchParams();
-        params.set("paginate", String(paginate));
-        params.set("page", String(page));
-        if (search !== undefined && search !== null)
-          params.set("search", String(search));
-        if (status !== undefined && status !== null && String(status) !== "")
-          params.set("status", String(status));
-        if (from_date) params.set("from_date", from_date);
-        if (to_date) params.set("to_date", to_date);
-        if (user_id !== undefined && user_id !== null && String(user_id) !== "")
-          params.set("user_id", String(user_id));
-        if (
-          simpanan_berjangka_category_id !== undefined &&
-          simpanan_berjangka_category_id !== null &&
-          String(simpanan_berjangka_category_id) !== ""
-        )
-          params.set(
-            "simpanan_berjangka_category_id",
-            String(simpanan_berjangka_category_id)
-          );
-
+      query: (params) => {
+        const p = (params ?? {}) as Partial<SimpananBerjangkaListParams>;
         return {
-          url: `simpanan/berjangka?${params.toString()}`,
+          url: `/simpanan/berjangka`,
           method: "GET",
+          params: {
+            page: p.page ?? 1,
+            paginate: p.paginate ?? 10,
+            ...(p.user_id != null && { user_id: p.user_id }),
+            ...(p.from_date && { from_date: p.from_date }),
+            ...(p.to_date && { to_date: p.to_date }),
+            ...(p.from_maturity_date && { from_maturity_date: p.from_maturity_date }),
+            ...(p.to_maturity_date && { to_maturity_date: p.to_maturity_date }),
+            ...(p.due_day != null && { due_day: p.due_day }),
+            ...(p.status != null && {
+              status: Array.isArray(p.status) ? p.status : p.status,
+            }),
+            ...(p.simpanan_berjangka_category_id != null && {
+              simpanan_berjangka_category_id: p.simpanan_berjangka_category_id,
+            }),
+            ...(p.master_bilyet_berjangka_id != null && {
+              master_bilyet_berjangka_id: p.master_bilyet_berjangka_id,
+            }),
+            ...(p.status_bilyet && { status_bilyet: p.status_bilyet }),
+            ...(p.type && { type: p.type }),
+            ...(p.search && { search: p.search }),
+            ...(p.searchBySpecific && { searchBySpecific: p.searchBySpecific }),
+            ...(p.orderBy && { orderBy: p.orderBy }),
+            ...(p.order && { order: p.order }),
+          },
         };
       },
-      providesTags: (result) =>
-        result && Array.isArray(result.data)
-          ? [
-              ...result.data.map((r) => ({
-                type: "SimpananBerjangka" as const,
-                id: r.id,
-              })),
-              { type: "SimpananBerjangka" as const, id: "LIST" },
-            ]
-          : [{ type: "SimpananBerjangka" as const, id: "LIST" }],
+      transformResponse: (response: ApiResponse<SimpananBerjangkaPaginatedResponse>) =>
+        transformPaginated(response),
     }),
 
-    // Get by id
-    getSimpananBerjangkaById: builder.query<
-      {
-        code: number;
-        message: string;
-        data: SimpananBerjangka & { payments?: Payment[] };
-      },
-      number
-    >({
+    getSimpananBerjangkaById: builder.query<SimpananBerjangka, number>({
       query: (id) => ({
-        url: `simpanan/berjangka/${id}`,
+        url: `/simpanan/berjangka/${id}`,
         method: "GET",
       }),
-      providesTags: (result, error, id) => [
-        { type: "SimpananBerjangka" as const, id },
-      ],
+      transformResponse: (response: ApiResponse<SimpananBerjangka>) => response.data,
     }),
 
-    // Create
-    createSimpananBerjangka: builder.mutation<
-      { code: number; message: string; data: SimpananBerjangka },
-      Partial<SimpananBerjangka>
-    >({
-      query: (raw) => {
-        // jika ada file image -> gunakan FormData
-        const hasFile = raw.image && typeof raw.image !== "string";
-        if (hasFile) {
-          const fd = new FormData();
-          const dataObj = compactBody(
-            raw as Partial<SimpananBerjangka> as UnknownRecord
-          );
-          entries(dataObj).forEach(([k, v]) => {
-            if (k === "image" && isFile(v)) {
-              fd.append(k, v);
-            } else if (typeof v === "object" && v !== null) {
-              // array atau object -> JSON
-              try {
-                fd.append(k, JSON.stringify(v));
-              } catch {
-                // fallback
-                fd.append(k, String(v));
-              }
-            } else {
-              fd.append(k, String(v ?? ""));
-            }
-          });
-
-          return {
-            url: "simpanan/berjangka",
-            method: "POST",
-            body: fd,
-          };
-        }
-
-        return {
-          url: "simpanan/berjangka",
-          method: "POST",
-          body: compactBody(raw as Partial<SimpananBerjangka> as UnknownRecord),
-        };
-      },
-      invalidatesTags: [{ type: "SimpananBerjangka" as const, id: "LIST" }],
+    createSimpananBerjangka: builder.mutation<SimpananBerjangka, SimpananBerjangkaStoreRequest>({
+      query: (payload) => ({
+        url: `/simpanan/berjangka`,
+        method: "POST",
+        body: buildStoreFormData(payload),
+      }),
+      transformResponse: (response: ApiResponse<SimpananBerjangka>) => response.data,
     }),
 
-    // Update
     updateSimpananBerjangka: builder.mutation<
-      { code: number; message: string; data: SimpananBerjangka },
-      { id: number; data: Partial<SimpananBerjangka> }
+      SimpananBerjangka,
+      { id: number; payload: Partial<SimpananBerjangkaUpdateRequest> }
     >({
-      query: ({ id, data }) => {
-        const hasFile = data.image && typeof data.image !== "string";
-        if (hasFile) {
-          const fd = new FormData();
-          const dataObj = compactBody(
-            data as Partial<SimpananBerjangka> as UnknownRecord
-          );
-          entries(dataObj).forEach(([k, v]) => {
-            if (k === "image" && isFile(v)) {
-              fd.append(k, v);
-            } else if (typeof v === "object" && v !== null) {
-              try {
-                fd.append(k, JSON.stringify(v));
-              } catch {
-                fd.append(k, String(v));
-              }
-            } else {
-              fd.append(k, String(v ?? ""));
-            }
-          });
-
-          // method override if backend expects PUT with form-data
-          fd.append("_method", "PUT");
-
-          return {
-            url: `simpanan/berjangka/${id}`,
-            method: "POST",
-            body: fd,
-          };
-        }
-
+      query: ({ id, payload }) => {
+        const form = new FormData();
+        if (payload.description != null) form.append("description", payload.description);
+        if (payload.term_months != null) form.append("term_months", String(payload.term_months));
+        if (payload.status_bilyet != null) form.append("status_bilyet", payload.status_bilyet);
+        if (payload.image) form.append("image", payload.image);
         return {
-          url: `simpanan/berjangka/${id}`,
-          method: "PUT",
-          body: compactBody(
-            data as Partial<SimpananBerjangka> as UnknownRecord
-          ),
+          url: `/simpanan/berjangka/${id}?_method=PUT`,
+          method: "POST",
+          body: form,
         };
       },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "SimpananBerjangka" as const, id },
-        { type: "SimpananBerjangka" as const, id: "LIST" },
-      ],
+      transformResponse: (response: ApiResponse<SimpananBerjangka>) => response.data,
     }),
 
-    // Delete
-    deleteSimpananBerjangka: builder.mutation<
-      { code: number; message: string },
-      number
-    >({
+    deleteSimpananBerjangka: builder.mutation<{ code: number; message: string }, number>({
       query: (id) => ({
-        url: `simpanan/berjangka/${id}`,
+        url: `/simpanan/berjangka/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: (result, error, id) => [
-        { type: "SimpananBerjangka" as const, id },
-        { type: "SimpananBerjangka" as const, id: "LIST" },
-      ],
+      transformResponse: (response: ApiResponse<unknown>) => ({
+        code: response.code,
+        message: response.message,
+      }),
     }),
 
-    // Validate (PUT /simpanan/berjangka/:id/validate)
     validateSimpananBerjangka: builder.mutation<
-      { code: number; message: string; data?: unknown },
-      { id: number; data?: Record<string, unknown> }
+      SimpananBerjangka,
+      { id: number; payload: SimpananBerjangkaValidateRequest }
     >({
-      query: ({ id, data = {} }) => {
-        const body = compactBody(data);
-        // jika body kosong, tetap kirim PUT tanpa body
+      query: ({ id, payload }) => ({
+        url: `/simpanan/berjangka/${id}/validate`,
+        method: "PUT",
+        body: payload,
+        headers: { "Content-Type": "application/json" },
+      }),
+      transformResponse: (response: ApiResponse<SimpananBerjangka>) => response.data,
+    }),
+
+    cairNormalSimpananBerjangka: builder.mutation<SimpananBerjangkaCairNormalResponse, number>({
+      query: (id) => ({
+        url: `/simpanan/berjangka/${id}/cair`,
+        method: "POST",
+      }),
+      transformResponse: (response: ApiResponse<SimpananBerjangkaCairNormalResponse>) =>
+        response.data,
+    }),
+
+    cairAwalSimpananBerjangka: builder.mutation<SimpananBerjangkaCairAwalResponse, number>({
+      query: (id) => ({
+        url: `/simpanan/berjangka/${id}/cair-awal`,
+        method: "POST",
+      }),
+      transformResponse: (response: ApiResponse<SimpananBerjangkaCairAwalResponse>) =>
+        response.data,
+    }),
+
+    getSimpananBerjangkaImportSample: builder.query<
+      SimpananBerjangkaImportSampleResponse,
+      void
+    >({
+      query: () => ({
+        url: `/simpanan/berjangka/import/sample`,
+        method: "GET",
+      }),
+      transformResponse: (response: ApiResponse<SimpananBerjangkaImportSampleResponse>) =>
+        response.data,
+    }),
+
+    getSimpananBerjangkaImportTemplate: builder.query<Blob, void>({
+      query: () => ({
+        url: `/simpanan/berjangka/import/template`,
+        method: "GET",
+        responseHandler: (response) => response.blob(),
+      }),
+    }),
+
+    importSimpananBerjangkaMigrasi: builder.mutation<
+      SimpananBerjangkaImportMigrasiResponse,
+      File
+    >({
+      query: (file) => {
+        const form = new FormData();
+        form.append("file", file);
         return {
-          url: `simpanan/berjangka/${id}/validate`,
-          method: "PUT",
-          body: Object.keys(body).length ? body : undefined,
+          url: `/simpanan/berjangka/import/migrasi`,
+          method: "POST",
+          body: form,
         };
       },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "SimpananBerjangka" as const, id },
-        { type: "SimpananBerjangka" as const, id: "LIST" },
-      ],
+      transformResponse: (response: ApiResponse<SimpananBerjangkaImportMigrasiResponse>) =>
+        response.data,
     }),
   }),
   overrideExisting: false,
@@ -257,4 +223,9 @@ export const {
   useUpdateSimpananBerjangkaMutation,
   useDeleteSimpananBerjangkaMutation,
   useValidateSimpananBerjangkaMutation,
+  useCairNormalSimpananBerjangkaMutation,
+  useCairAwalSimpananBerjangkaMutation,
+  useGetSimpananBerjangkaImportSampleQuery,
+  useLazyGetSimpananBerjangkaImportTemplateQuery,
+  useImportSimpananBerjangkaMigrasiMutation,
 } = simpananBerjangkaApi;

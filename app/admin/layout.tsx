@@ -150,20 +150,43 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
           href: "/admin/simpanan-berjangka/data",
         },
         {
-          id: "simpanan-berjangka/transaksi-simjaka",
-          label: "Transaksi Simjaka",
-          href: "/admin/simpanan-berjangka/transaksi",
+          id: "simpanan-berjangka/pencairan-simjaka",
+          label: "Pencairan",
+          href: "/admin/simpanan-berjangka/pencairan",
         },
         {
           id: "simpanan-berjangka/laporan-simjaka",
           label: "Laporan Simjaka",
-          href: "/admin/simpanan-berjangka/laporan",
+          href: "#",
+          sub_children: [
+            {
+              id: "simpanan-berjangka/laporan/simjaka",
+              label: "Simpanan Berjangka",
+              href: "/admin/simpanan-berjangka/laporan",
+            },
+            {
+              id: "simpanan-berjangka/eod",
+              label: "EOD",
+              href: "/admin/simpanan-berjangka/eod",
+            },
+            {
+              id: "simpanan-berjangka/eom",
+              label: "EOM",
+              href: "/admin/simpanan-berjangka/eom",
+            },
+            {
+              id: "simpanan-berjangka/eoy",
+              label: "EOY",
+              href: "/admin/simpanan-berjangka/eoy",
+            },
+          ],
         },
-        {
-          id: "simpanan-berjangka/simpanan-berjangka/proses-simjaka-harian",
-          label: "Proses Simjaka Harian",
-          href: "/admin/simpanan-berjangka/proses-simjaka-harian",
-        },
+            
+        // {
+        //   id: "simpanan-berjangka/simpanan-berjangka/proses-simjaka-harian",
+        //   label: "Proses Simjaka Harian",
+        //   href: "/admin/simpanan-berjangka/proses-simjaka-harian",
+        // },
       ],
     },
     {
@@ -484,8 +507,18 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
         },
         {
           id: "konfigurasi/produk-pembiayaan",
-          label: "Produk Pembiayaan",
+          label: "Produk Pinjaman",
           href: "/admin/konfigurasi/pembiayaan",
+        },
+        {
+          id: "konfigurasi/tarif-bunga",
+          label: "Tarif Bunga",
+          href: "/admin/konfigurasi/tarif-bunga",
+        },
+        {
+          id: "konfigurasi/bilyet-berjangka",
+          label: "Master Bilyet Berjangka",
+          href: "/admin/konfigurasi/bilyet-berjangka",
         },
         {
           id: "konfigurasi/pengelola",

@@ -64,11 +64,12 @@ const formatRupiah = (number: number) => {
   }).format(number);
 };
 
-// --- SIMULASI LOGIC (FLAT RATE) ---
+// --- SIMULASI LOGIC (ANUITAS) ---
+// Angsuran tetap per bulan; komposisi: awal bunga besar → akhir pokok besar
 
-const calculateFlatAngsuran = (
+const calculateAnuitasAngsuran = (
   pokokPinjaman: number,
-  bungaTahunanPersen: number,
+  bungaPerBulanPersen: number,
   tenorBulan: number
 ): {
   totalPokok: number;
@@ -85,44 +86,42 @@ const calculateFlatAngsuran = (
     };
   }
 
-  // Bunga per bulan (Flat Rate)
-  const bungaBulananDesimal = bungaTahunanPersen / 100 / 12;
+  const r = bungaPerBulanPersen / 100; // desimal, misal 1.5% → 0.015
+  const n = tenorBulan;
+  const P = pokokPinjaman;
 
-  // 1. Hitung total bunga selama tenor
-  const totalBungaNominal = pokokPinjaman * bungaBulananDesimal * tenorBulan;
+  // PMT = P * [ r(1+r)^n ] / [ (1+r)^n - 1 ]
+  const factor = Math.pow(1 + r, n);
+  const pmt = (P * (r * factor)) / (factor - 1);
+  const angsuranTetap = Math.round(pmt);
 
-  // 2. Hitung angsuran pokok dan bunga per bulan
-  const angsuranPokokBulanan = pokokPinjaman / tenorBulan;
-  const angsuranBungaBulanan = totalBungaNominal / tenorBulan;
-  const totalAngsuranBulanan = angsuranPokokBulanan + angsuranBungaBulanan;
-
-  let sisaPokok = pokokPinjaman;
+  let sisaPokok = P;
   const jadwalAngsuran: AngsuranDetail[] = [];
+  let totalBungaAkumulasi = 0;
 
-  for (let i = 1; i <= tenorBulan; i++) {
-    const pokok = angsuranPokokBulanan;
-    const jasa_bunga = angsuranBungaBulanan;
-    // Membulatkan angsuran agar rapi, sisa desimal biasanya di adjust di akhir,
-    // tapi untuk simulasi kita bulatkan per item
-    const total_angsuran = totalAngsuranBulanan;
-
-    sisaPokok -= pokok;
-    if (i === tenorBulan || sisaPokok < 0) sisaPokok = 0;
+  for (let i = 1; i <= n; i++) {
+    const jasa_bunga = Math.round(sisaPokok * r);
+    const pokok = i === n
+      ? Math.round(sisaPokok) // bulan terakhir: sisa pokok habis
+      : Math.round(angsuranTetap - jasa_bunga);
+    const total_angsuran = pokok + jasa_bunga;
+    sisaPokok = Math.max(0, sisaPokok - pokok);
+    totalBungaAkumulasi += jasa_bunga;
 
     jadwalAngsuran.push({
       bulan: i,
-      pokok: Math.round(pokok),
-      jasa_bunga: Math.round(jasa_bunga),
-      total_angsuran: Math.round(total_angsuran),
+      pokok,
+      jasa_bunga,
+      total_angsuran,
       sisa_pokok: Math.round(sisaPokok),
     });
   }
 
   return {
-    totalPokok: pokokPinjaman,
-    totalBunga: Math.round(totalBungaNominal),
+    totalPokok: P,
+    totalBunga: totalBungaAkumulasi,
     angsuran: jadwalAngsuran,
-    angsuranPerBulan: Math.round(totalAngsuranBulanan),
+    angsuranPerBulan: angsuranTetap,
   };
 };
 
@@ -159,15 +158,16 @@ export default function SimulasiPembiayaanPage() {
     // setTenor(undefined);
   }, [selectedProductId]);
 
-  // --- HITUNG HASIL SIMULASI ---
+  // --- HITUNG HASIL SIMULASI (ANUITAS) ---
+  // Bunga dari API: umumnya % per tahun → konversi ke % per bulan (÷ 12)
   const simulationResult = useMemo(() => {
     if (!selectedProduct || nominalPinjaman <= 0 || tenor === undefined) {
       return null;
     }
-
-    return calculateFlatAngsuran(
+    const bungaPerBulanPersen = selectedProduct.interest_rate / 12;
+    return calculateAnuitasAngsuran(
       nominalPinjaman,
-      selectedProduct.interest_rate, // Ambil bunga dari API
+      bungaPerBulanPersen,
       tenor
     );
   }, [selectedProduct, nominalPinjaman, tenor]);
@@ -287,7 +287,9 @@ export default function SimulasiPembiayaanPage() {
                   <p className="font-bold text-red-600 text-lg">
                     {selectedProduct.interest_rate}%
                   </p>
-                  <p className="text-xs text-gray-400">per tahun (Flat)</p>
+                  <p className="text-xs text-gray-400">
+                    per tahun (≈ {(selectedProduct.interest_rate / 12).toFixed(2)}% per bulan, Anuitas)
+                  </p>
                 </div>
                 <div>
                   <p className="text-gray-500">Biaya Admin</p>
@@ -312,6 +314,9 @@ export default function SimulasiPembiayaanPage() {
               <CardTitle className="text-lg flex items-center gap-2 text-green-700">
                 <ListChecks className="h-5 w-5" /> Ringkasan Pembiayaan
               </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Metode <strong>Anuitas</strong>: angsuran tetap per bulan; awal periode bunga besar, akhir periode pokok besar.
+              </p>
             </CardHeader>
             <CardContent>
               {simulationResult ? (

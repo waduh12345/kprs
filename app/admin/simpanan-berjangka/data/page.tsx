@@ -1,141 +1,188 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ProdukToolbar } from "@/components/ui/produk-toolbar";
-import { useRouter } from "next/navigation";
+import { Input } from "@/components/ui/input";
 import ActionsGroup from "@/components/admin-components/actions-group";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  HistoryIcon,
-  PlusCircle,
-  Clock,
-  FileDown,
-  XCircle,
-  CheckCircle,
-} from "lucide-react";
+  useGetSimpananBerjangkaListQuery,
+  useDeleteSimpananBerjangkaMutation,
+  useValidateSimpananBerjangkaMutation,
+  useLazyGetSimpananBerjangkaImportTemplateQuery,
+  useImportSimpananBerjangkaMigrasiMutation,
+} from "@/services/admin/simpanan/simpanan-berjangka.service";
+import type {
+  SimpananBerjangka,
+  ValidationStatus,
+} from "@/types/admin/simpanan/simpanan-berjangka";
+import SimpananBerjangkaForm from "@/components/form-modal/simpanan-berjangka-form";
+import { Plus, FileDown, FileUp, Clock, Loader2 } from "lucide-react";
 import Swal from "sweetalert2";
 
-// helper format
-const formatRupiah = (number: number) => {
-  return new Intl.NumberFormat("id-ID", {
+const formatRupiah = (n: number) =>
+  new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
-  }).format(number);
+  }).format(n);
+
+const displayDate = (d: string | null | undefined) =>
+  d ? new Date(d).toLocaleDateString("id-ID") : "-";
+
+const STATUS_LABELS: Record<ValidationStatus, string> = {
+  0: "Pending",
+  1: "Disetujui",
+  2: "Ditolak",
+  3: "Tidak Aktif",
 };
 
-// Pastikan tipe status di SimpananBerjangka sudah diperbarui di file types
-type SimpananBerjangkaStatus = "Disetujui" | "Ditolak" | "Pending";
-
-// Gunakan tipe SimpananBerjangka dari file types
-// Asumsi: SimpananBerjangka dari types/admin/simpanan/simpanan-berjangka.ts
-import { SimpananBerjangka } from "@/types/admin/simpanan/simpanan-berjangka";
-
 const statusVariant = (
-  status: SimpananBerjangkaStatus
-): "success" | "destructive" | "default" | "secondary" => {
-  if (status === "Disetujui") return "success";
-  if (status === "Ditolak") return "destructive"; // Atau warna lain
-  if (status === "Pending") return "secondary"; // Atau warna lain
+  status: ValidationStatus
+): "success" | "destructive" | "secondary" | "default" => {
+  if (status === 1) return "success";
+  if (status === 2) return "destructive";
+  if (status === 3) return "default";
   return "secondary";
 };
 
-// --- NEW: import service hook untuk fetching (pastikan path sesuai projectmu) ---
-import {
-  useGetSimpananBerjangkaListQuery,
-  useValidateSimpananBerjangkaMutation,
-} from "@/services/admin/simpanan/simpanan-berjangka.service";
-import { displayDate } from "@/lib/format-utils";
-// import form component (modal)
-import SimpananBerjangkaForm from "@/components/form-modal/simpanan-berjangka-form";
+const STATUS_FILTER_OPTIONS = [
+  { value: "all", label: "Semua Status" },
+  { value: "0", label: "Pending" },
+  { value: "1", label: "Disetujui" },
+  { value: "2", label: "Ditolak" },
+  { value: "3", label: "Tidak Aktif" },
+];
 
-// New Interface untuk data yang sudah di-map agar sesuai tabel
-interface SimpananBerjangkaUIData {
-  id: number; // ID asli
-  reference: string;
-  user_name: string;
-  category_name: string;
-  nominal: number;
-  term_months: number;
-  date: string; // Tanggal Mulai
-  nominal_current: number; // Nominal Saat Ini
-  status: SimpananBerjangkaStatus; // Label status yang sudah diolah
-}
-
-export default function SimpananBerjangkaPage() {
-  const router = useRouter();
-
-  // state untuk data yang ditampilkan di UI (menggantikan dummy)
-  const [dataSimjaka, setDataSimjaka] = useState<SimpananBerjangkaUIData[]>([]);
-
-  // modal / editing state
-  const [showForm, setShowForm] = useState<boolean>(false);
+export default function SimpananBerjangkaDataPage() {
+  const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | undefined>(undefined);
-
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<
-    SimpananBerjangkaStatus | "all"
-  >("all");
-  const modalRef = useRef<HTMLDivElement | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const itemsPerPage = 10;
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // State untuk modal approval
-  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
-  const [itemToApprove, setItemToApprove] = useState<SimpananBerjangka | null>(
-    null
+  const listParams = useMemo(
+    () => ({
+      page: currentPage,
+      paginate: itemsPerPage,
+      ...(query.trim() && { search: query.trim() }),
+      ...(statusFilter !== "all" && {
+        status: Number(statusFilter) as ValidationStatus,
+      }),
+    }),
+    [currentPage, itemsPerPage, query, statusFilter]
   );
-  const [approvalDate, setApprovalDate] = useState<string>("");
 
-  // Menambahkan hook untuk validasi (approval)
+  const { data, isLoading, refetch } = useGetSimpananBerjangkaListQuery(
+    listParams
+  );
+
+  const list = useMemo(() => data?.data ?? [], [data]);
+  const lastPage = useMemo(() => data?.last_page ?? 1, [data]);
+
+  const [deleteSimpananBerjangka] = useDeleteSimpananBerjangkaMutation();
   const [validateSimpananBerjangka, { isLoading: isValidating }] =
     useValidateSimpananBerjangkaMutation();
+  const [getTemplate, { isLoading: isTemplateLoading }] =
+    useLazyGetSimpananBerjangkaImportTemplateQuery();
+  const [importMigrasi, { isLoading: isImporting }] =
+    useImportSimpananBerjangkaMigrasiMutation();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Handler untuk membuka modal approval
-  const handleOpenApprovalModal = (item: SimpananBerjangka) => {
-    setItemToApprove(item);
-    setApprovalDate(new Date().toISOString().split("T")[0]); // Set default tanggal approval ke hari ini
-    setApprovalModalOpen(true);
-  };
-
-  // Handler untuk submit approval
-  const handleSubmitApproval = async () => {
-    if (!itemToApprove || !approvalDate) {
-      Swal.fire("Peringatan", "Tanggal persetujuan harus diisi", "warning");
-      return;
-    }
-
+  const handleDownloadTemplate = async () => {
     try {
-      // Memanggil mutation untuk validasi simpanan berjangka
-      await validateSimpananBerjangka({
-        id: itemToApprove.id,
-        data: { approval_date: approvalDate },
-      }).unwrap();
-
-      setApprovalModalOpen(false); // Menutup modal setelah sukses
-      setItemToApprove(null);
-      Swal.fire("Berhasil", "Simpanan Berjangka disetujui", "success");
-      refetch(); // Refetch data untuk memperbarui status
+      const blob = await getTemplate().unwrap();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "template_simpanan_berjangka.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+      Swal.fire("Berhasil", "Template berhasil diunduh", "success");
     } catch (error) {
-      Swal.fire("Gagal", "Gagal menyetujui Simpanan Berjangka", "error");
       console.error(error);
+      Swal.fire("Gagal", "Gagal mengunduh template", "error");
     }
   };
 
-  // Handler untuk approve dengan konfirmasi yang lebih menarik
-  const handleApprove = async (item: SimpananBerjangkaUIData) => {
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const result = await importMigrasi(file).unwrap();
+      await refetch();
+      const hasErrors =
+        result.failed > 0 && result.errors && Object.keys(result.errors).length > 0;
+      Swal.fire({
+        title:
+          result.failed > 0 ? "Import Selesai dengan Catatan" : "Import Berhasil",
+        html: `
+          <p>${result.message}</p>
+          <p><strong>Berhasil:</strong> ${result.processed}</p>
+          <p><strong>Gagal:</strong> ${result.failed}</p>
+          ${
+            hasErrors
+              ? `<pre class="text-left text-xs mt-2 max-h-32 overflow-auto bg-gray-100 p-2 rounded">${Object.entries(result.errors)
+                  .map(([row, msg]) => `Baris ${row}: ${msg}`)
+                  .join("\n")}</pre>`
+              : ""
+          }
+        `,
+        icon: result.failed > 0 ? "warning" : "success",
+      });
+    } catch (error) {
+      console.error(error);
+      Swal.fire("Gagal", "Import gagal. Periksa format file.", "error");
+    }
+  };
+
+  const handleAdd = () => {
+    setEditingId(undefined);
+    setShowForm(true);
+  };
+
+  const handleEdit = (item: SimpananBerjangka) => {
+    setEditingId(item.id);
+    setShowForm(true);
+  };
+
+  const handleDetail = (item: SimpananBerjangka) => {
+    setEditingId(item.id);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (item: SimpananBerjangka) => {
     const confirm = await Swal.fire({
-      title: "Apakah Anda yakin ingin menyetujui Simpanan Berjangka?",
-      text: `Referensi: ${item.reference}\nAnggota: ${
-        item.user_name
-      }\nNominal: ${formatRupiah(item.nominal)}\nTanggal Mulai: ${displayDate(
-        item.date
-      )}`,
+      title: "Yakin hapus data?",
+      text: `Simpanan Berjangka ${item.reference} (${item.user_name ?? "-"}) akan dihapus.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Hapus",
+    });
+
+    if (confirm.isConfirmed) {
+      try {
+        await deleteSimpananBerjangka(item.id).unwrap();
+        await refetch();
+        Swal.fire("Berhasil", "Data Simpanan Berjangka dihapus", "success");
+      } catch (error) {
+        console.error(error);
+        Swal.fire("Gagal", "Gagal menghapus Simpanan Berjangka", "error");
+      }
+    }
+  };
+
+  const handleApprove = async (item: SimpananBerjangka) => {
+    const confirm = await Swal.fire({
+      title: "Setujui Simpanan Berjangka?",
+      text: `${item.reference} — ${item.user_name ?? "-"} — ${formatRupiah(item.nominal)}`,
       icon: "question",
       showCancelButton: true,
       confirmButtonText: "Ya, Setujui",
@@ -144,29 +191,23 @@ export default function SimpananBerjangkaPage() {
 
     if (confirm.isConfirmed) {
       try {
-        // Memanggil mutation untuk menyetujui simpanan berjangka (status 1)
         await validateSimpananBerjangka({
           id: item.id,
-          data: { status: 1 }, // Status menjadi "Disetujui" (1)
+          payload: { status: 1 },
         }).unwrap();
         Swal.fire("Berhasil", "Simpanan Berjangka disetujui", "success");
-        refetch(); // Refresh data setelah update status
+        await refetch();
       } catch (error) {
-        Swal.fire("Gagal", "Gagal menyetujui Simpanan Berjangka", "error");
         console.error(error);
+        Swal.fire("Gagal", "Gagal menyetujui Simpanan Berjangka", "error");
       }
     }
   };
 
-  // Handler untuk reject dengan konfirmasi yang lebih menarik
-  const handleReject = async (item: SimpananBerjangkaUIData) => {
+  const handleReject = async (item: SimpananBerjangka) => {
     const confirm = await Swal.fire({
-      title: "Apakah Anda yakin ingin menolak Simpanan Berjangka?",
-      text: `Referensi: ${item.reference}\nAnggota: ${
-        item.user_name
-      }\nNominal: ${formatRupiah(item.nominal)}\nTanggal Mulai: ${displayDate(
-        item.date
-      )}`,
+      title: "Tolak Simpanan Berjangka?",
+      text: `${item.reference} — ${item.user_name ?? "-"} — ${formatRupiah(item.nominal)}`,
       icon: "warning",
       showCancelButton: true,
       confirmButtonText: "Ya, Tolak",
@@ -175,384 +216,234 @@ export default function SimpananBerjangkaPage() {
 
     if (confirm.isConfirmed) {
       try {
-        // Memanggil mutation untuk menolak simpanan berjangka (status -1)
         await validateSimpananBerjangka({
           id: item.id,
-          data: { status: -1 }, // Status menjadi "Ditolak" (-1)
+          payload: { status: 2 },
         }).unwrap();
         Swal.fire("Berhasil", "Simpanan Berjangka ditolak", "success");
-        refetch(); // Refresh data setelah update status
+        await refetch();
       } catch (error) {
-        Swal.fire("Gagal", "Gagal menolak Simpanan Berjangka", "error");
         console.error(error);
+        Swal.fire("Gagal", "Gagal menolak Simpanan Berjangka", "error");
       }
     }
   };
 
-  useEffect(() => {
-    // jika modal terbuka -> lock body scroll dan fokus input pertama
-    if (showForm) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-
-      // fokus ke elemen input/select/textarea/button pertama di modal
-      requestAnimationFrame(() => {
-        const el = modalRef.current?.querySelector<HTMLElement>(
-          "input,select,textarea,button"
-        );
-        el?.focus();
-      });
-
-      // handle Esc key
-      const onKey = (e: KeyboardEvent) => {
-        if (e.key === "Escape") {
-          setShowForm(false);
-          setEditingId(undefined);
-        }
-      };
-      window.addEventListener("keydown", onKey);
-
-      return () => {
-        window.removeEventListener("keydown", onKey);
-        document.body.style.overflow = prev;
-      };
-    }
-    // cleanup jika modal tidak terbuka tidak perlu
-    return;
-  }, [showForm]);
-
-  // fetch dari API (pakai hook yang sudah ada)
-  const {
-    data: apiResp,
-    isLoading,
-    refetch,
-  } = useGetSimpananBerjangkaListQuery({
-    paginate: 10,
-    page: 1,
-    search: "",
-  });
-
-  // Helper: extract array dari berbagai bentuk respons API
-  function extractItems(source: unknown): SimpananBerjangka[] {
-    if (!source) return [];
-    // Jika respons berbentuk { data: { data: [...] } }
-    if (typeof source === "object" && source !== null && "data" in source) {
-      const lvl1 = (source as Record<string, unknown>).data;
-      if (typeof lvl1 === "object" && lvl1 !== null && "data" in lvl1) {
-        const lvl2 = (lvl1 as Record<string, unknown>).data;
-        if (Array.isArray(lvl2)) return lvl2 as SimpananBerjangka[];
-      }
-    }
-    // Jika respons berbentuk { data: [...] } (kurang umum untuk paginasi)
-    if (
-      typeof source === "object" &&
-      source !== null &&
-      Array.isArray(source)
-    ) {
-      return source as SimpananBerjangka[];
-    }
-    return [];
-  }
-
-  // Helper: map satu item respons -> bentuk UI SimpananBerjangkaUIData
-  function mapToUi(item: SimpananBerjangka): SimpananBerjangkaUIData | null {
-    if (typeof item.id !== "number") return null;
-
-    // map status: gunakan field `status` yang dikirim backend (0, 1, 2)
-    // 0: Tidak Aktif (bisa juga Pending/Selesai), 1: Aktif, 2: Jatuh Tempo (asumsi)
-    let statusLabel: SimpananBerjangkaStatus;
-    if (item.status === 1) {
-      statusLabel = "Disetujui";
-    } else if (item.status === -1) {
-      statusLabel = "Ditolak";
-    } else {
-      statusLabel = "Pending"; // Asumsi status 0 atau lainnya adalah Tidak Aktif
-    }
-
-    // Fallback: Jika ada data dari payment dan paid_at null, bisa dianggap Pending/Tidak Aktif.
-
-    return {
-      id: item.id,
-      reference: item.reference || "-",
-      user_name: item.user_name || "-",
-      category_name: item.category_name || "-",
-      nominal: item.nominal || 0,
-      term_months: item.term_months || 0,
-      date: item.date || "-",
-      nominal_current: item.nominal || 0, // Dalam contoh respons, hanya ada `nominal`. Diasumsikan `nominal` adalah `nominal_awal` dan juga `nominal_saat_ini` jika tidak ada field lain.
-      status: statusLabel,
-    };
-  }
-
-  // ketika apiResp berubah -> ambil dan map ke state UI
-  useEffect(() => {
-    const items = extractItems(apiResp);
-    const mapped: SimpananBerjangkaUIData[] = items
-      .map((it) => mapToUi(it))
-      .filter((x): x is SimpananBerjangkaUIData => x !== null);
-    setDataSimjaka(mapped);
-  }, [apiResp]);
-
-  const filteredList = useMemo(() => {
-    let arr = dataSimjaka;
-
-    // Filter Status
-    if (statusFilter !== "all") {
-      arr = arr.filter((it) => it.status === statusFilter);
-    }
-
-    // Filter Query Pencarian
-    if (!query.trim()) return arr;
-    const q = query.toLowerCase();
-    return arr.filter((it) =>
-      [it.user_name, it.reference, it.category_name].some((f) =>
-        f?.toLowerCase?.().includes?.(q)
-      )
-    );
-  }, [dataSimjaka, query, statusFilter]);
-
-  // --- HANDLERS ---
-  const handleEdit = (item: SimpananBerjangkaUIData) => {
-    // buka modal dan set id untuk mode edit
-    setEditingId(item.id);
-    setShowForm(true);
+  const onFormSuccess = () => {
+    refetch();
+    setShowForm(false);
+    setEditingId(undefined);
   };
 
-  const handleDelete = async (item: SimpananBerjangkaUIData) => {
-    const confirm = await Swal.fire({
-      title: "Yakin hapus data?",
-      text: `Simpanan Berjangka ${item.reference} (${item.user_name}) akan dihapus.`,
-      icon: "warning",
-      showCancelButton: true,
-      confirmButtonText: "Hapus",
-      // ... (style tambahan jika ada)
-    });
-    if (confirm.isConfirmed) {
-      // Di sini harusnya panggil API delete, untuk demo kita hapus local state
-      setDataSimjaka((prev) => prev.filter((d) => d.id !== item.id));
-      Swal.fire("Berhasil", "Data Simpanan Berjangka dihapus", "success");
-    }
-  };
-
-  const handleTambahModal = async (item: SimpananBerjangkaUIData) => {
-    const { value: nominal } = await Swal.fire({
-      title: `Tambah Modal Simjaka`,
-      text: `Anggota: ${item.user_name} (${item.reference})`,
-      input: "number",
-      inputLabel: "Masukkan Nominal Tambah Modal (IDR)",
-      inputValue: "",
-      showCancelButton: true,
-      confirmButtonText: "Proses Tambah Modal",
-      inputValidator: (value) => {
-        if (!value || Number(value) <= 0) {
-          return "Nominal harus lebih dari 0";
-        }
-        return null;
-      },
-    });
-
-    if (nominal) {
-      const addedNominal = Number(nominal);
-      setDataSimjaka((prev) =>
-        prev.map((d) =>
-          d.id === item.id
-            ? { ...d, nominal_current: d.nominal_current + addedNominal }
-            : d
-        )
-      );
-      Swal.fire({
-        icon: "success",
-        title: "Modal Ditambahkan",
-        text: `Berhasil menambah modal ${formatRupiah(
-          addedNominal
-        )} ke rekening ${item.reference}.`,
-      });
-    }
+  const onFormCancel = () => {
+    setShowForm(false);
+    setEditingId(undefined);
   };
 
   const handleExportExcel = () => {
     Swal.fire({
       icon: "info",
       title: "Export Data",
-      text: "Permintaan export data Simpanan Berjangka sedang diproses. (Simulasi)",
+      text: "Fitur export data Simpanan Berjangka akan tersedia segera.",
     });
   };
 
-  // open modal for create
-  const handleAdd = () => {
-    setEditingId(undefined); // Penting: pastikan ID kosong untuk mode tambah
-    setShowForm(true);
-  };
-
-  // callback ketika form sukses
-  function onFormSuccess() {
-    refetch(); // Ambil ulang data
-    setShowForm(false);
-    setEditingId(undefined);
-  }
-
-  // cancel callback
-  function onFormCancel() {
-    setShowForm(false);
-    setEditingId(undefined);
-  }
-
-  // Menggunakan filteredList untuk tampilan
-  const listToDisplay = filteredList.length > 0 ? filteredList : dataSimjaka;
+  const colSpan = 12;
 
   return (
     <div className="p-6 space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-6 w-6 text-primary" />
-            Data Simpanan Berjangka
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ProdukToolbar
-            onSearchChange={setQuery}
-            showAddButton
-            openModal={handleAdd}
-            // Konfigurasi Filter Status
-            enableStatusFilter
-            statusOptions={[
-              { value: "all", label: "Semua Status" },
-              { value: "Aktif", label: "Aktif" },
-              { value: "Jatuh Tempo", label: "Jatuh Tempo" },
-              { value: "Tidak Aktif", label: "Tidak Aktif" },
-            ]}
-            initialStatus={statusFilter}
-            onStatusChange={setStatusFilter as (value: string) => void}
-            // Konfigurasi Export
-            enableExport
-            onExportExcel={handleExportExcel}
-            exportLabel="Export Data"
-            exportIcon={<FileDown className="h-4 w-4 mr-2" />}
-            // Nonaktifkan Import/Template
-            showTemplateCsvButton={false}
-            enableImport={false}
-          />
+        <CardContent className="p-0">
+          <div className="p-4 border-b bg-muted/30">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-1">
+                <Input
+                  placeholder="Cari no. bilyet, anggota, referensi..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="w-full sm:max-w-xs"
+                />
+                <select
+                  className="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm w-full sm:w-[180px]"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  {STATUS_FILTER_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  onChange={handleImportFile}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadTemplate}
+                  disabled={isTemplateLoading}
+                >
+                  {isTemplateLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <FileDown className="h-4 w-4 mr-2" />
+                  )}
+                  Template
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleImportClick}
+                  disabled={isImporting}
+                >
+                  {isImporting ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <FileUp className="h-4 w-4 mr-2" />
+                  )}
+                  Import
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleExportExcel}>
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+                <Button onClick={handleAdd}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Simpanan Berjangka
+                </Button>
+              </div>
+            </div>
+          </div>
 
-          <div className="mt-4 p-0 overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-muted text-left">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/80 text-left">
                 <tr>
-                  <th className="px-4 py-3">Aksi</th>
-                  <th className="px-4 py-3">Anggota</th>
-                  <th className="px-4 py-3">Reference</th>
-                  <th className="px-4 py-3">Produk</th>
-                  <th className="px-4 py-3">Nominal Awal</th>
-                  <th className="px-4 py-3">Nominal Saat Ini</th>
-                  <th className="px-4 py-3">Jangka (Bulan)</th>
-                  <th className="px-4 py-3">Tgl. Mulai</th>
-                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 font-medium w-[1%]">Aksi</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap">No. Bilyet</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap">Kode Bilyet</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap">Anggota</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap">Referensi</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap">Produk</th>
+                  <th className="px-4 py-3 font-medium text-right whitespace-nowrap">Nominal</th>
+                  <th className="px-4 py-3 font-medium text-center whitespace-nowrap">Jangka</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap">Tgl. Mulai</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap">Jatuh Tempo</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap">Status</th>
+                  <th className="px-4 py-3 font-medium whitespace-nowrap">Bilyet</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={9} className="text-center p-4">
+                    <td colSpan={colSpan} className="text-center p-10 text-muted-foreground">
                       Memuat data...
                     </td>
                   </tr>
-                ) : listToDisplay.length === 0 ? (
+                ) : list.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center p-4">
-                      Tidak ada data simpanan berjangka yang ditemukan.
+                    <td colSpan={colSpan} className="text-center p-10 text-muted-foreground">
+                      Tidak ada data simpanan berjangka.
                     </td>
                   </tr>
                 ) : (
-                  listToDisplay.map((item) => (
-                    <tr key={item.id} className="border-t hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <ActionsGroup
-                          handleDetail={() => handleEdit(item)}
-                          handleEdit={() => handleEdit(item)}
-                          handleDelete={() => handleDelete(item)}
-                          showDetail={false}
-                          additionalActions={
-                            <div className="flex items-center gap-2">
-                              {/* Tombol Tambah Modal */}
-                              {/* <Tooltip>
-                                <TooltipTrigger asChild>
+                  list.map((item) => (
+                    <tr
+                      key={item.id}
+                      className="border-t border-border/50 hover:bg-muted/20 transition-colors"
+                    >
+                      <td className="px-4 py-3 align-top">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <ActionsGroup
+                            handleDetail={() => handleDetail(item)}
+                            handleEdit={() => handleEdit(item)}
+                            handleDelete={() => handleDelete(item)}
+                            showDetail={false}
+                            additionalActions={
+                              item.status === 0 ? (
+                                <>
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="bg-green-100 hover:bg-green-200 text-green-700"
-                                    onClick={() => handleTambahModal(item)}
+                                    className="text-green-700 border-green-200 hover:bg-green-50"
+                                    onClick={() => handleApprove(item)}
+                                    disabled={isValidating}
                                   >
-                                    <PlusCircle className="size-4" />
+                                    Setujui
                                   </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Tambah Modal/Top Up</p>
-                                </TooltipContent>
-                              </Tooltip> */}
-
-                              {/* Tombol Approve dan Reject hanya muncul jika status Pending */}
-                              {item.status === "Pending" && (
-                                <>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        size="sm"
-                                        onClick={() => handleApprove(item)} // Approve
-                                        className="bg-green-600 hover:bg-green-700"
-                                      >
-                                        <CheckCircle className="size-4" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Approve Simpanan</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        size="sm"
-                                        onClick={() => handleReject(item)} // Reject
-                                        className="bg-red-600 hover:bg-red-700"
-                                      >
-                                        <XCircle className="size-4" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Reject Simpanan</p>
-                                    </TooltipContent>
-                                  </Tooltip>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-red-700 border-red-200 hover:bg-red-50"
+                                    onClick={() => handleReject(item)}
+                                    disabled={isValidating}
+                                  >
+                                    Tolak
+                                  </Button>
                                 </>
-                              )}
-                            </div>
-                          }
-                        />
+                              ) : null
+                            }
+                          />
+                        </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {item.user_name}
+                      <td className="px-4 py-3 align-top">
+                        <span className="font-mono text-xs font-medium">
+                          {item.no_bilyet ?? "-"}
+                        </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap font-semibold">
-                        {item.reference}
+                      <td className="px-4 py-3 align-top">
+                        <span className="text-muted-foreground text-xs">
+                          {item.kode_bilyet_master ?? item.masterBilyet?.kode_bilyet ?? "-"}
+                        </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {item.category_name}
+                      <td className="px-4 py-3 align-top min-w-[140px]">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-medium">
+                            {item.user_name ?? item.user?.name ?? "-"}
+                          </span>
+                          {item.no_anggota != null && item.no_anggota !== "" && (
+                            <span className="text-xs text-muted-foreground">
+                              {item.no_anggota}
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-right font-mono">
+                      <td className="px-4 py-3 align-top font-mono text-xs text-muted-foreground">
+                        {item.reference ?? "-"}
+                      </td>
+                      <td className="px-4 py-3 align-top text-muted-foreground">
+                        {item.category_name ??
+                          item.masterBilyet?.nama_produk ??
+                          item.kode_bilyet_master ??
+                          "-"}
+                      </td>
+                      <td className="px-4 py-3 align-top text-right font-mono tabular-nums">
                         {formatRupiah(item.nominal)}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-right font-bold text-primary">
-                        {formatRupiah(item.nominal_current)}
+                      <td className="px-4 py-3 align-top text-center">
+                        {item.term_months != null ? `${item.term_months} bln` : "-"}
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        {item.term_months}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-4 py-3 align-top text-muted-foreground whitespace-nowrap">
                         {displayDate(item.date)}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <Badge variant={statusVariant(item.status)}>
-                          {item.status}
+                      <td className="px-4 py-3 align-top text-muted-foreground whitespace-nowrap">
+                        {displayDate(item.maturity_date)}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <Badge variant={statusVariant(item.status)} className="whitespace-nowrap">
+                          {STATUS_LABELS[item.status] ?? `Status ${item.status}`}
                         </Badge>
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <span className="text-muted-foreground capitalize text-xs">
+                          {item.status_bilyet?.replace("_", " ") ?? "-"}
+                        </span>
                       </td>
                     </tr>
                   ))
@@ -560,119 +451,68 @@ export default function SimpananBerjangkaPage() {
               </tbody>
             </table>
           </div>
+
+          <div className="p-4 flex items-center justify-between border-t bg-muted/30">
+            <div className="text-sm text-muted-foreground">
+              Halaman <strong>{currentPage}</strong> dari{" "}
+              <strong>{lastPage}</strong>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              >
+                Sebelumnya
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage >= lastPage}
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(lastPage, p + 1))
+                }
+              >
+                Berikutnya
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
-      {/* Modal / Form */}
+
       {showForm && (
-        // overlay
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40"
-          onClick={() => {
-            // klik overlay akan menutup modal
-            setShowForm(false);
-            setEditingId(undefined);
-          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          onClick={onFormCancel}
         >
-          {/* modal container: hentikan event bubbling agar klik di dalam modal tidak menutup */}
           <div
-            className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-lg shadow-lg p-4"
+            className="bg-white dark:bg-zinc-900 rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="modal-title"
-            ref={modalRef}
+            aria-labelledby="simjaka-modal-title"
           >
-            <div className="flex justify-between items-center mb-4">
-              <h3 id="modal-title" className="text-lg font-medium">
+            <div className="flex items-center justify-between p-4 border-b shrink-0">
+              <h2
+                id="simjaka-modal-title"
+                className="text-lg font-semibold flex items-center gap-2"
+              >
+                <Clock className="h-5 w-5 text-primary" />
                 {editingId
                   ? "Ubah Simpanan Berjangka"
                   : "Tambah Simpanan Berjangka"}
-              </h3>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => {
-                    setShowForm(false);
-                    setEditingId(undefined);
-                  }}
-                >
-                  Tutup
-                </Button>
-              </div>
-            </div>
-
-            <SimpananBerjangkaForm
-              id={editingId}
-              onSuccess={() => onFormSuccess()}
-              onCancel={() => onFormCancel()}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Modal Approval */}
-      {approvalModalOpen && itemToApprove && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
-            <div className="flex justify-between items-center mb-4 border-b pb-2">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                Konfirmasi Persetujuan
               </h2>
-              <button
-                onClick={() => {
-                  setApprovalModalOpen(false);
-                  setItemToApprove(null);
-                }}
-                className="text-gray-500 hover:text-gray-700"
-              >
+              <Button variant="ghost" size="icon" onClick={onFormCancel}>
                 ✕
-              </button>
+              </Button>
             </div>
-
-            <div className="space-y-4">
-              <div className="bg-green-50 p-3 rounded border border-green-200">
-                <p className="text-sm text-green-800">
-                  Anda akan menyetujui Simpanan Berjangka untuk:
-                </p>
-                <p className="font-bold text-green-900">
-                  {itemToApprove.user_name}
-                </p>
-                <p className="text-sm text-green-800">
-                  Nominal: {formatRupiah(itemToApprove.nominal)}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  Tanggal Disetujui (Approval Date){" "}
-                  <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={approvalDate}
-                  onChange={(e) => setApprovalDate(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setApprovalModalOpen(false);
-                    setItemToApprove(null);
-                  }}
-                >
-                  Batal
-                </Button>
-                <Button
-                  onClick={handleSubmitApproval}
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  disabled={isValidating} // Disable button while validating
-                >
-                  Setujui Simpanan Berjangka
-                </Button>
-              </div>
+            <div className="overflow-y-auto p-4">
+              <SimpananBerjangkaForm
+                id={editingId}
+                onSuccess={onFormSuccess}
+                onCancel={onFormCancel}
+              />
             </div>
           </div>
         </div>

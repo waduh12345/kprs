@@ -123,6 +123,9 @@ export const pinjamanApi = apiSlice.injectEndpoints({
         pinjaman_id: number;
         month: number;
         paid: number;
+        principal: number;
+        bunga: number;
+        total: number;
         remaining: number;
         due_date: string;
         paid_at: string | null;
@@ -179,6 +182,9 @@ export const pinjamanApi = apiSlice.injectEndpoints({
             pinjaman_id: number;
             month: number;
             paid: number;
+            principal: number;
+            bunga: number;
+            total: number;
             remaining: number;
             due_date: string;
             paid_at: string | null;

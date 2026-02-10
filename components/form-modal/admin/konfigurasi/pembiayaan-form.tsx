@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Pembiayaan } from "@/types/admin/konfigurasi/pembiayaan";
+import type { Pembiayaan, InterestCalculationMethod, LateInterestType } from "@/types/admin/konfigurasi/pembiayaan";
 import { formatRupiah, parseRupiah } from "@/lib/format-utils";
 
 interface FormPinjamanCategoryProps {
@@ -61,10 +61,10 @@ export default function FormPembiayaan({
       <div className="flex justify-between items-center sticky top-0 bg-white dark:bg-zinc-900 z-10 pb-2 border-b mb-4">
         <h2 className="text-lg font-semibold">
           {readonly
-            ? "Detail Produk Pembiayaan"
+            ? "Detail Produk Pinjaman"
             : form.id
-            ? "Edit Produk Pembiayaan"
-            : "Tambah Produk Pembiayaan"}
+            ? "Edit Produk Pinjaman"
+            : "Tambah Produk Pinjaman"}
         </h2>
         <Button variant="ghost" size="sm" onClick={onCancel}>
           ✕
@@ -78,7 +78,7 @@ export default function FormPembiayaan({
             value={form.name || ""}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             readOnly={readonly}
-            placeholder="Contoh: Pembiayaan Wajib"
+            placeholder="Contoh: Pinjaman Wajib"
             className="w-full"
           />
         </div>
@@ -197,6 +197,99 @@ export default function FormPembiayaan({
             placeholder="0"
             className="w-full"
           />
+        </div>
+
+        <div className="flex flex-col gap-y-1.5">
+          <Label>Metode Perhitungan Bunga</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={form.interest_calculation_method || "anuitas"}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                interest_calculation_method: e.target.value as InterestCalculationMethod,
+              })
+            }
+            disabled={readonly}
+            aria-label="Metode perhitungan bunga"
+          >
+            <option value="flat">Flat</option>
+            <option value="efektif">Efektif</option>
+            <option value="anuitas">Anuitas</option>
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Default: Anuitas
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-y-1.5">
+          <Label>Tipe Denda Keterlambatan</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={form.late_interest_type ?? "percent"}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                late_interest_type: e.target.value as LateInterestType,
+              })
+            }
+            disabled={readonly}
+            aria-label="Tipe denda keterlambatan"
+          >
+            <option value="percent">Persen (%)</option>
+            <option value="fixed">Nominal (Rp)</option>
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Denda dihitung per hari keterlambatan
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-y-1.5">
+          <Label>
+            Nilai Denda Keterlambatan{" "}
+            {form.late_interest_type === "fixed" ? "(Rp)" : "(%)"}
+          </Label>
+          {form.late_interest_type === "fixed" ? (
+            <Input
+              type="text"
+              inputMode="numeric"
+              value={formatRupiah(form.late_interest_value ?? "")}
+              onChange={(e) => {
+                const raw = e.target.value;
+                const parsed = parseRupiah(raw);
+                setForm({
+                  ...form,
+                  late_interest_value: raw === "" ? undefined : parsed,
+                });
+              }}
+              readOnly={readonly}
+              placeholder="Rp 0"
+              className="w-full"
+            />
+          ) : (
+            <Input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step={0.01}
+              value={form.late_interest_value ?? ""}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setForm({
+                  ...form,
+                  late_interest_value: raw === "" ? undefined : Number(raw),
+                });
+              }}
+              readOnly={readonly}
+              placeholder="0"
+              className="w-full"
+            />
+          )}
+          <p className="text-xs text-muted-foreground">
+            {form.late_interest_type === "fixed"
+              ? "Nominal denda per hari (contoh: Rp 10.000)"
+              : "Persentase dari angsuran per hari (contoh: 0.1)"}
+          </p>
         </div>
 
         <div className="flex flex-col gap-y-1.5">

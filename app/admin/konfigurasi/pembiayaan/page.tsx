@@ -24,6 +24,9 @@ export default function PinjamanKategoriPage() {
     admin_fee: 0,
     margin: 0,
     interest_rate: 0,
+    interest_calculation_method: "anuitas",
+    late_interest_type: "percent",
+    late_interest_value: 0,
   });
   const [editingId, setEditingId] = useState<number | null>(null);
   const [readonly, setReadonly] = useState(false);
@@ -56,18 +59,27 @@ export default function PinjamanKategoriPage() {
         interest_rate: form.interest_rate !== undefined ? form.interest_rate : 0,
         admin_fee: form.admin_fee !== undefined ? form.admin_fee : 0,
         margin: form.margin !== undefined ? form.margin : 0,
+        interest_calculation_method: form.interest_calculation_method || "anuitas",
+        late_interest_type: form.late_interest_type ?? "percent",
+        late_interest_value: form.late_interest_value !== undefined ? form.late_interest_value : 0,
         status: form.status !== undefined ? form.status : 1,
       };
 
       if (editingId) {
         await update({ id: editingId, payload }).unwrap();
-        Swal.fire("Sukses", "Produk Pembiayaan diperbarui", "success");
+        Swal.fire("Sukses", "Produk Pinjaman diperbarui", "success");
       } else {
         await create(payload).unwrap();
-        Swal.fire("Sukses", "Produk Pembiayaan ditambahkan", "success");
+        Swal.fire("Sukses", "Produk Pinjaman ditambahkan", "success");
       }
 
-      setForm({ status: 1, admin_fee: 0 });
+      setForm({
+        status: 1,
+        admin_fee: 0,
+        interest_calculation_method: "anuitas",
+        late_interest_type: "percent",
+        late_interest_value: 0,
+      });
       setEditingId(null);
       await refetch();
       closeModal();
@@ -103,9 +115,9 @@ export default function PinjamanKategoriPage() {
       try {
         await deletePembiayaan(item.id).unwrap();
         await refetch();
-        Swal.fire("Berhasil", "Produk Pembiayaan dihapus", "success");
+        Swal.fire("Berhasil", "Produk Pinjaman dihapus", "success");
       } catch (error) {
-        Swal.fire("Gagal", "Gagal menghapus produk pembiayaan", "error");
+        Swal.fire("Gagal", "Gagal menghapus Produk Pinjaman", "error");
         console.error(error);
       }
     }
@@ -143,7 +155,7 @@ export default function PinjamanKategoriPage() {
           {/* Kanan: aksi */}
           <div className="shrink-0 flex flex-wrap items-center gap-2">
             {/* Tambah data (opsional) */}
-            {openModal && <Button onClick={openModal}><Plus /> Produk Pembiayaan</Button>}
+            {openModal && <Button onClick={openModal}><Plus /> Produk Pinjaman</Button>}
           </div>
         </div>
       </div>
@@ -158,6 +170,9 @@ export default function PinjamanKategoriPage() {
                 <th className="px-4 py-2">Nama</th>
                 <th className="px-4 py-2">Admin Fee</th>
                 <th className="px-4 py-2">Bunga</th>
+                <th className="px-4 py-2">Metode Bunga</th>
+                <th className="px-4 py-2">Tipe Denda</th>
+                <th className="px-4 py-2">Nilai Denda</th>
                 <th className="px-4 py-2">Margin</th>
                 <th className="px-4 py-2">Deskripsi</th>
                 <th className="px-4 py-2">Status</th>
@@ -167,13 +182,13 @@ export default function PinjamanKategoriPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="text-center p-4">
+                  <td colSpan={12} className="text-center p-4">
                     Memuat data...
                   </td>
                 </tr>
               ) : filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center p-4">
+                  <td colSpan={12} className="text-center p-4">
                     Tidak ada data
                   </td>
                 </tr>
@@ -199,6 +214,25 @@ export default function PinjamanKategoriPage() {
                       }).format(item.admin_fee)}
                     </td>
                     <td className="px-4 py-2 font-medium">{item.interest_rate}</td>
+                    <td className="px-4 py-2">
+                      <Badge variant="secondary" className="capitalize">
+                        {item.interest_calculation_method || "anuitas"}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2">
+                      <span className="text-muted-foreground text-xs capitalize">
+                        {item.late_interest_type === "fixed" ? "Nominal (Rp)" : "Persen (%)"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 font-medium">
+                      {item.late_interest_type === "fixed"
+                        ? new Intl.NumberFormat("id-ID", {
+                            style: "currency",
+                            currency: "IDR",
+                            minimumFractionDigits: 0,
+                          }).format(item.late_interest_value ?? 0)
+                        : `${item.late_interest_value ?? 0}%`}
+                    </td>
                     <td className="px-4 py-2 font-medium">{item.margin}</td>
                     <td className="px-4 py-2 text-gray-600 max-w-xs truncate">
                       {item.description}
@@ -250,7 +284,13 @@ export default function PinjamanKategoriPage() {
             form={form}
             setForm={setForm}
             onCancel={() => {
-              setForm({ status: 1, admin_fee: 0 });
+              setForm({
+                status: 1,
+                admin_fee: 0,
+                interest_calculation_method: "anuitas",
+                late_interest_type: "percent",
+                late_interest_value: 0,
+              });
               setEditingId(null);
               setReadonly(false);
               closeModal();

@@ -161,3 +161,34 @@ export interface UpdatePaymentRequest {
   type?: "manual" | "automatic";
   image?: File;
 }
+
+/** Satu baris summary rekening (saldo per rekening) */
+export interface SimpananReportSummaryItem {
+  id: number;
+  name: string;
+  account: string;
+  balance: number;
+}
+
+/** Satu baris detail (simpanan berjangka atau simpanan reguler) */
+export interface SimpananReportDetailItem {
+  id: number | string;
+  marketing_code: string;
+  bilyet: string;
+  jatuh_tempo: string;
+  jangka: number;
+  rate: number;
+  cb: string;
+  nasabah: string;
+  nominal: number;
+  aro: number;
+  notes: string;
+}
+
+/** Response GET /simpanan/report/member?anggota_id= */
+export interface SimpananReportByAnggotaResponse {
+  summary: SimpananReportSummaryItem[];
+  detail: SimpananReportDetailItem[];
+  total_saldo: number;
+  total_simpanan_berjangka: number;
+}

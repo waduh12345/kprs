@@ -6,6 +6,7 @@ import {
   UpdateSimpananRequest,
   PaymentHistory,
   PaymentHistoryResponse,
+  SimpananReportByAnggotaResponse,
 } from "@/types/admin/simpanan";
 
 export const simpananApi = apiSlice.injectEndpoints({
@@ -262,6 +263,22 @@ export const simpananApi = apiSlice.injectEndpoints({
         data: PaymentHistory;
       }) => response.data,
     }),
+
+    getSimpananReportByAnggota: builder.query<
+      SimpananReportByAnggotaResponse,
+      { anggota_id: number }
+    >({
+      query: ({ anggota_id }) => ({
+        url: `/simpanan/report/member`,
+        method: "GET",
+        params: { anggota_id },
+      }),
+      transformResponse: (response: {
+        code: number;
+        message: string;
+        data: SimpananReportByAnggotaResponse;
+      }) => response.data,
+    }),
   }),
   overrideExisting: false,
 });
@@ -281,3 +298,7 @@ export const {
   useDeletePaymentHistoryMutation,
   useUpdatePaymentStatusMutation,
 } = simpananApi;
+
+/** Laporan simpanan per anggota - diekspor terpisah agar type injected endpoint terbaca. */
+export const useGetSimpananReportByAnggotaQuery =
+  (simpananApi as typeof simpananApi & { useGetSimpananReportByAnggotaQuery: (arg: { anggota_id: number }, options?: { skip?: boolean }) => ReturnType<typeof simpananApi.useGetSimpananListQuery> }).useGetSimpananReportByAnggotaQuery;

@@ -7,14 +7,22 @@ import { Button } from "@/components/ui/button";
 import { skipToken } from "@reduxjs/toolkit/query";
 import Swal from "sweetalert2";
 
-import type { SimpananBerjangka } from "@/types/admin/simpanan/simpanan-berjangka";
+import type {
+  SimpananBerjangka,
+  PaymentTypeSimpananBerjangka,
+  SimpananBerjangkaStoreWithMasterRequest,
+  SimpananBerjangkaStoreWithCategoryRequest,
+  SimpananBerjangkaUpdateRequest,
+} from "@/types/admin/simpanan/simpanan-berjangka";
 import {
   useCreateSimpananBerjangkaMutation,
   useGetSimpananBerjangkaByIdQuery,
   useUpdateSimpananBerjangkaMutation,
 } from "@/services/admin/simpanan/simpanan-berjangka.service";
+import { useGetMasterBilyetBerjangkaListQuery } from "@/services/admin/konfigurasi/master-simpanan-berjangka.service";
 import { useGetAnggotaListQuery } from "@/services/koperasi-service/anggota.service";
 import { useGetSimpananBerjangkaCategoriesListQuery } from "@/services/admin/konfigurasi/simpanan-berjangka-kategori.service";
+import type { MasterBilyetBerjangka } from "@/types/admin/konfigurasi/master-simpanan-berjangka";
 
 import { Combobox } from "@/components/ui/combo-box";
 
@@ -24,7 +32,8 @@ type Props = {
   onCancel?: () => void;
 };
 
-// Interface Category
+type StoreMode = "master" | "category";
+
 interface RawCategoryResponseItem {
   id: number;
   name?: string | null;
@@ -32,11 +41,15 @@ interface RawCategoryResponseItem {
   category_code?: string | null;
 }
 
-// Interface Combobox Category
 type Category = {
   id: number;
   name: string;
   category_code?: string | null;
+};
+
+type MasterBilyetOption = {
+  id: number;
+  name: string;
 };
 
 type Anggota = {
@@ -51,7 +64,6 @@ interface PaginatedResponse<T> {
   data?: T[] | { data?: T[] };
 }
 
-// --- HELPER FORMAT NOMINAL ---
 const formatNumber = (num: number | undefined | null) => {
   if (num === undefined || num === null) return "";
   return new Intl.NumberFormat("id-ID").format(num);
@@ -62,30 +74,33 @@ export default function SimpananBerjangkaForm({
   onSuccess,
   onCancel,
 }: Props) {
-  // --- queries ---
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const minSearchLength = 3;
+
+  const [storeMode, setStoreMode] = useState<StoreMode>("master");
+
   const kategoriQuery = useGetSimpananBerjangkaCategoriesListQuery({
     paginate: 100,
     page: 1,
   });
 
-  // --- LOGIKA PENCARIAN ANGGOTA ---
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const minSearchLength = 3; // Batas minimal huruf
+  const masterBilyetQuery = useGetMasterBilyetBerjangkaListQuery({
+    paginate: 100,
+    page: 1,
+    status: 1,
+  });
 
   const anggotaQuery = useGetAnggotaListQuery(
     { paginate: 100, page: 1, search: searchQuery },
-    { skip: searchQuery.length < minSearchLength } // Skip jika kurang dari 3 huruf
+    { skip: searchQuery.length < minSearchLength }
   );
 
-  // kategoriOptions
   const kategoriOptions = useMemo<Category[]>(() => {
-    const resp =
-      kategoriQuery.data as PaginatedResponse<RawCategoryResponseItem>;
+    const resp = kategoriQuery.data as PaginatedResponse<RawCategoryResponseItem>;
     if (!resp || !resp.data) return [];
     const raw: RawCategoryResponseItem[] = Array.isArray(resp.data)
       ? resp.data
-      : resp.data.data ?? [];
-
+      : (resp.data as { data?: RawCategoryResponseItem[] }).data ?? [];
     return raw
       .map((c) => ({
         id: c.id,
@@ -95,104 +110,95 @@ export default function SimpananBerjangkaForm({
       .filter((c) => !!c.id && !!c.name);
   }, [kategoriQuery.data]);
 
-  // anggotaOptions
-  const anggotaOptions = useMemo<Anggota[]>(() => {
-    // Jika query kurang dari 3 huruf, kembalikan array kosong agar list tidak tampil
-    if (searchQuery.length < minSearchLength) return [];
+  const masterBilyetOptions = useMemo<MasterBilyetOption[]>(() => {
+    const data = masterBilyetQuery.data?.data ?? [];
+    return (data as MasterBilyetBerjangka[]).map((m) => ({
+      id: m.id,
+      name: `${m.kode_bilyet} — ${m.nama_produk} (${m.tenor_bulan} bln)`,
+    }));
+  }, [masterBilyetQuery.data]);
 
+  const anggotaOptions = useMemo<Anggota[]>(() => {
+    if (searchQuery.length < minSearchLength) return [];
     const resp = anggotaQuery.data as PaginatedResponse<Anggota>;
     if (!resp || !resp.data) return [];
-    return Array.isArray(resp.data) ? resp.data : resp.data.data ?? [];
-  }, [anggotaQuery.data, searchQuery]); // Dependency pada searchQuery
+    return Array.isArray(resp.data) ? resp.data : (resp.data as { data?: Anggota[] }).data ?? [];
+  }, [anggotaQuery.data, searchQuery]);
 
-  const handleSearchChange = (query: string) => {
-    setSearchQuery(query);
-  };
+  const handleSearchChange = (query: string) => setSearchQuery(query);
 
-  // ambil data by id kalau edit
   const byIdQuery = useGetSimpananBerjangkaByIdQuery(
     id ?? (skipToken as unknown as number),
     { skip: !id }
   );
 
-  // State Form
-  const initialFormState: Partial<SimpananBerjangka> = useMemo(
+  const initialFormState = useMemo(
     () => ({
-      simpanan_berjangka_category_id: undefined,
-      user_id: undefined,
-      description: "",
-      date: "",
-      nominal: undefined,
-      term_months: undefined,
-      type: "manual",
-      payment_method: undefined,
-      payment_channel: undefined,
-      image: null,
+      simpanan_berjangka_category_id: undefined as number | undefined,
+      master_bilyet_berjangka_id: undefined as number | undefined,
+      anggota_id: undefined as number | undefined,
+      description: "" as string,
+      date: "" as string,
+      nominal: undefined as number | undefined,
+      term_months: undefined as number | undefined,
+      no_bilyet: "" as string,
+      no_ao: "" as string,
+      type: "manual" as PaymentTypeSimpananBerjangka,
+      payment_method: undefined as string | undefined,
+      payment_channel: undefined as string | undefined,
+      image: null as File | string | null,
+      status_bilyet: undefined as SimpananBerjangka["status_bilyet"] | undefined,
     }),
     []
   );
 
-  const [form, setForm] =
-    useState<Partial<SimpananBerjangka>>(initialFormState);
+  const [form, setForm] = useState(initialFormState);
 
-  // mutations
-  const [createMutation, { isLoading: creating }] =
-    useCreateSimpananBerjangkaMutation();
-  const [updateMutation, { isLoading: updating }] =
-    useUpdateSimpananBerjangkaMutation();
+  const [createMutation, { isLoading: creating }] = useCreateSimpananBerjangkaMutation();
+  const [updateMutation, { isLoading: updating }] = useUpdateSimpananBerjangkaMutation();
 
-  // populate jika edit
   useEffect(() => {
-    if (
-      id &&
-      byIdQuery.data &&
-      "data" in byIdQuery.data &&
-      byIdQuery.data.data
-    ) {
-      const d = byIdQuery.data.data as SimpananBerjangka;
-      setForm({
-        simpanan_berjangka_category_id: d.simpanan_berjangka_category_id,
-        user_id: d.user_id,
-        description: d.description ?? "",
-        date: d.date ? d.date.substring(0, 16) : "",
-        nominal: d.nominal,
-        term_months: d.term_months,
-        type: d.type ?? "manual",
-        payment_method: d.payment_method ?? undefined,
-        payment_channel: d.payment_channel ?? undefined,
-        image: d.image ?? null,
-      });
-    } else if (!id) {
+    if (!id) {
       setForm(initialFormState);
+      setStoreMode("master");
+      return;
     }
-  }, [id, byIdQuery.data, initialFormState]);
+    const d = byIdQuery.data as SimpananBerjangka | undefined;
+    if (!d) return;
+    setForm({
+      simpanan_berjangka_category_id: d.simpanan_berjangka_category_id ?? undefined,
+      master_bilyet_berjangka_id: d.master_bilyet_berjangka_id ?? undefined,
+      anggota_id: d.user_id,
+      description: d.description ?? "",
+      date: d.date ? d.date.substring(0, 16) : "",
+      nominal: d.nominal,
+      term_months: d.term_months,
+      no_bilyet: d.no_bilyet ?? "",
+      no_ao: d.no_ao ?? "",
+      type: (d.type ?? "manual") as PaymentTypeSimpananBerjangka,
+      payment_method: undefined,
+      payment_channel: undefined,
+      image: d.image ?? null,
+      status_bilyet: d.status_bilyet,
+    });
+    setStoreMode(d.master_bilyet_berjangka_id != null ? "master" : "category");
+  }, [id, byIdQuery.data]);
 
-  // helper setField
-  function setField<K extends keyof Partial<SimpananBerjangka>>(
-    key: K,
-    value: Partial<SimpananBerjangka>[K]
-  ) {
+  function setField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  // --- HANDLER NOMINAL ---
   const handleNominalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Hapus karakter selain angka
     const rawValue = e.target.value.replace(/\D/g, "");
-    const numericValue = rawValue ? parseInt(rawValue, 10) : undefined;
-    setField("nominal", numericValue);
+    setField("nominal", rawValue ? parseInt(rawValue, 10) : undefined);
   };
 
-  // type guard file
   function isFile(v: unknown): v is File {
     return typeof File !== "undefined" && v instanceof File;
   }
 
-  // validation
   function validate(): { ok: boolean; message?: string } {
-    if (!form.simpanan_berjangka_category_id)
-      return { ok: false, message: "Kategori wajib diisi" };
-    if (!form.user_id) return { ok: false, message: "Anggota wajib diisi" };
+    if (!form.anggota_id) return { ok: false, message: "Anggota wajib diisi" };
     if (!form.date || String(form.date).trim() === "")
       return { ok: false, message: "Tanggal wajib diisi" };
     if (
@@ -201,18 +207,28 @@ export default function SimpananBerjangkaForm({
       Number(form.nominal) <= 0
     )
       return { ok: false, message: "Nominal harus lebih dari 0" };
-    if (
-      form.term_months === undefined ||
-      Number.isNaN(Number(form.term_months)) ||
-      Number(form.term_months) <= 0
-    )
-      return { ok: false, message: "Term bulan harus lebih dari 0" };
+
+    if (!id) {
+      if (storeMode === "master") {
+        if (!form.master_bilyet_berjangka_id)
+          return { ok: false, message: "Produk (Master Bilyet) wajib diisi" };
+      } else {
+        if (!form.simpanan_berjangka_category_id)
+          return { ok: false, message: "Kategori wajib diisi" };
+        if (
+          form.term_months === undefined ||
+          Number(form.term_months) <= 0
+        )
+          return { ok: false, message: "Term bulan harus lebih dari 0" };
+        if (!form.no_bilyet?.trim())
+          return { ok: false, message: "No. Bilyet wajib diisi" };
+        if (!form.no_ao?.trim())
+          return { ok: false, message: "No. AO wajib diisi" };
+      }
+    }
 
     if (form.type === "manual") {
-      if (
-        !form.image ||
-        (typeof form.image !== "string" && !isFile(form.image))
-      )
+      if (!form.image || (typeof form.image !== "string" && !isFile(form.image)))
         return { ok: false, message: "Image wajib untuk tipe manual" };
       if (isFile(form.image) && form.image.size > 5_120_000)
         return { ok: false, message: "Ukuran image maksimal 5 MB" };
@@ -220,21 +236,14 @@ export default function SimpananBerjangkaForm({
 
     if (form.type === "automatic") {
       if (!form.payment_method)
-        return {
-          ok: false,
-          message: "Payment method wajib untuk tipe automatic",
-        };
+        return { ok: false, message: "Payment method wajib untuk tipe automatic" };
       if (!form.payment_channel)
-        return {
-          ok: false,
-          message: "Payment channel wajib untuk tipe automatic",
-        };
+        return { ok: false, message: "Payment channel wajib untuk tipe automatic" };
     }
 
     return { ok: true };
   }
 
-  // submit
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault?.();
     const v = validate();
@@ -243,19 +252,47 @@ export default function SimpananBerjangkaForm({
       return;
     }
 
-    const payload: Partial<SimpananBerjangka> = {
-      ...form,
-    };
-
     try {
       if (id) {
-        await updateMutation({
-          id,
-          data: payload,
-        }).unwrap();
+        const updatePayload: Partial<SimpananBerjangkaUpdateRequest> = {};
+        if (form.description !== undefined) updatePayload.description = form.description;
+        if (form.term_months !== undefined) updatePayload.term_months = form.term_months;
+        if (form.status_bilyet !== undefined) updatePayload.status_bilyet = form.status_bilyet;
+        if (form.image !== undefined && form.image !== null) updatePayload.image = isFile(form.image) ? form.image : undefined;
+        await updateMutation({ id, payload: updatePayload }).unwrap();
         Swal.fire("Berhasil", "Data berhasil diubah", "success");
       } else {
-        await createMutation(payload).unwrap();
+        const type = form.type as PaymentTypeSimpananBerjangka;
+        if (storeMode === "master") {
+          const payload: SimpananBerjangkaStoreWithMasterRequest = {
+            master_bilyet_berjangka_id: form.master_bilyet_berjangka_id!,
+            anggota_id: form.anggota_id!,
+            date: form.date!,
+            nominal: form.nominal!,
+            type,
+            description: form.description || undefined,
+            payment_method: form.payment_method as SimpananBerjangkaStoreWithMasterRequest["payment_method"],
+            payment_channel: form.payment_channel as SimpananBerjangkaStoreWithMasterRequest["payment_channel"],
+            image: isFile(form.image) ? form.image : undefined,
+          };
+          await createMutation(payload).unwrap();
+        } else {
+          const payload: SimpananBerjangkaStoreWithCategoryRequest = {
+            simpanan_berjangka_category_id: form.simpanan_berjangka_category_id!,
+            anggota_id: form.anggota_id!,
+            date: form.date!,
+            nominal: form.nominal!,
+            term_months: form.term_months!,
+            no_bilyet: form.no_bilyet!.trim(),
+            no_ao: form.no_ao!.trim(),
+            type,
+            description: form.description || undefined,
+            payment_method: form.payment_method as SimpananBerjangkaStoreWithCategoryRequest["payment_method"],
+            payment_channel: form.payment_channel as SimpananBerjangkaStoreWithCategoryRequest["payment_channel"],
+            image: isFile(form.image) ? form.image : undefined,
+          };
+          await createMutation(payload).unwrap();
+        }
         Swal.fire("Berhasil", "Data berhasil dibuat", "success");
       }
       onSuccess?.();
@@ -266,9 +303,7 @@ export default function SimpananBerjangkaForm({
   }
 
   const getAnggotaLabel = (a: Anggota) =>
-    `${a.name ?? a.full_name ?? a.user_name ?? `Anggota ${a.id}`}${
-      a.email ? ` — ${a.email}` : ""
-    }`;
+    `${a.name ?? a.full_name ?? a.user_name ?? `Anggota ${a.id}`}${a.email ? ` — ${a.email}` : ""}`;
 
   const firstInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -278,50 +313,142 @@ export default function SimpananBerjangkaForm({
   const isLoadingData = id && byIdQuery.isLoading;
 
   if (isLoadingData) {
-    return <div>Memuat data simpanan berjangka...</div>;
+    return (
+      <div className="py-8 text-center text-muted-foreground">
+        Memuat data simpanan berjangka...
+      </div>
+    );
   }
+
+  const isEdit = !!id;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Kategori */}
-        <div>
-          <Label htmlFor="category-select">Produk (Kategori)</Label>
-          <div className="mt-1">
-            <Combobox<Category>
-              value={form.simpanan_berjangka_category_id ?? null}
-              onChange={(v) => setField("simpanan_berjangka_category_id", v)}
-              onSearchChange={undefined}
-              data={kategoriOptions}
-              isLoading={kategoriQuery.isLoading}
-              placeholder="Pilih kategori..."
-              getOptionLabel={(c) => c.name}
-            />
+        {/* Mode: Master Bilyet vs Kategori (hanya saat tambah) */}
+        {!isEdit && (
+          <div className="md:col-span-2">
+            <Label>Sumber Produk</Label>
+            <div className="flex items-center gap-6 mt-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="storeMode"
+                  checked={storeMode === "master"}
+                  onChange={() => setStoreMode("master")}
+                />
+                <span className="select-none">Master Bilyet Berjangka</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="storeMode"
+                  checked={storeMode === "category"}
+                  onChange={() => setStoreMode("category")}
+                />
+                <span className="select-none">Kategori (legacy)</span>
+              </label>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {storeMode === "master"
+                ? "Tenor, rate, dan no. bilyet diisi otomatis dari master."
+                : "Isi manual term, no. bilyet, dan no. AO."}
+            </p>
           </div>
-        </div>
+        )}
+
+        {/* Produk: Master Bilyet (saat mode master dan tambah) */}
+        {!isEdit && storeMode === "master" && (
+          <div className="md:col-span-2">
+            <Label htmlFor="master-bilyet-select">Produk (Master Bilyet)</Label>
+            <div className="mt-1">
+              <Combobox<MasterBilyetOption>
+                value={form.master_bilyet_berjangka_id ?? null}
+                onChange={(v) => setField("master_bilyet_berjangka_id", v ?? undefined)}
+                onSearchChange={undefined}
+                data={masterBilyetOptions}
+                isLoading={masterBilyetQuery.isLoading}
+                placeholder="Pilih produk bilyet..."
+                getOptionLabel={(m) => m.name}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Produk: tampilan readonly saat edit */}
+        {isEdit && byIdQuery.data && (
+          <div className="md:col-span-2">
+            <Label>Produk</Label>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {(byIdQuery.data as SimpananBerjangka).category_name ??
+                (byIdQuery.data as SimpananBerjangka).masterBilyet?.nama_produk ??
+                (byIdQuery.data as SimpananBerjangka).kode_bilyet_master ??
+                "—"}
+            </p>
+          </div>
+        )}
+
+        {/* Produk: Kategori (hanya mode category saat tambah) */}
+        {!isEdit && storeMode === "category" && (
+          <div className="md:col-span-2">
+            <Label htmlFor="category-select">Produk (Kategori)</Label>
+            <div className="mt-1">
+              <Combobox<Category>
+                value={form.simpanan_berjangka_category_id ?? null}
+                onChange={(v) => setField("simpanan_berjangka_category_id", v ?? undefined)}
+                onSearchChange={undefined}
+                data={kategoriOptions}
+                isLoading={kategoriQuery.isLoading}
+                placeholder="Pilih kategori..."
+                getOptionLabel={(c) => c.name}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* No. Bilyet & No. AO (hanya mode category saat tambah) */}
+        {!isEdit && storeMode === "category" && (
+          <>
+            <div>
+              <Label htmlFor="no-bilyet-input">No. Bilyet</Label>
+              <Input
+                id="no-bilyet-input"
+                value={form.no_bilyet}
+                onChange={(e) => setField("no_bilyet", e.target.value)}
+                className="mt-1"
+                placeholder="Contoh: BB-001"
+              />
+            </div>
+            <div>
+              <Label htmlFor="no-ao-input">No. AO</Label>
+              <Input
+                id="no-ao-input"
+                value={form.no_ao}
+                onChange={(e) => setField("no_ao", e.target.value)}
+                className="mt-1"
+                placeholder="Contoh: AO-001"
+              />
+            </div>
+          </>
+        )}
 
         {/* Anggota */}
         <div>
           <Label htmlFor="anggota-select">Anggota</Label>
           <div className="mt-1">
             <Combobox<Anggota>
-              value={form.user_id ?? null}
-              onChange={(v) => setField("user_id", v)}
+              value={form.anggota_id ?? null}
+              onChange={(v) => setField("anggota_id", v ?? undefined)}
               onSearchChange={handleSearchChange}
               data={anggotaOptions}
-              isLoading={
-                // Loading hanya jika query sedang berjalan dan panjang karakter cukup
-                searchQuery.length >= minSearchLength && anggotaQuery.isLoading
-              }
+              isLoading={searchQuery.length >= minSearchLength && anggotaQuery.isLoading}
               placeholder="Cari anggota..."
-              getOptionLabel={(a) => getAnggotaLabel(a)}
+              getOptionLabel={getAnggotaLabel}
             />
           </div>
-          {/* Tulisan bantuan jika kurang dari 3 huruf */}
           {searchQuery.length > 0 && searchQuery.length < minSearchLength && (
             <p className="text-xs text-red-500 mt-1">
-              * Masukkan minimal {minSearchLength} huruf untuk mencari nama
-              anggota.
+              * Minimal {minSearchLength} huruf untuk mencari.
             </p>
           )}
         </div>
@@ -336,118 +463,137 @@ export default function SimpananBerjangkaForm({
             value={form.date ? String(form.date).substring(0, 16) : ""}
             onChange={(e) => setField("date", e.target.value)}
             className="mt-1"
+            disabled={isEdit}
           />
         </div>
 
-        {/* Nominal dengan Format */}
+        {/* Nominal */}
         <div>
           <Label htmlFor="nominal-input">Nominal</Label>
           <div className="relative mt-1">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
               Rp
             </span>
             <Input
               id="nominal-input"
-              type="text" // Menggunakan text agar bisa ada separator
-              value={formatNumber(form.nominal)} // Tampilkan format ribuan
+              type="text"
+              value={formatNumber(form.nominal)}
               onChange={handleNominalChange}
-              className="pl-9" // Padding kiri untuk "Rp"
+              className="pl-9"
               placeholder="0"
+              disabled={isEdit}
             />
           </div>
         </div>
 
-        {/* Term */}
-        <div>
-          <Label htmlFor="term-input">Term (bulan)</Label>
-          <Input
-            id="term-input"
-            type="number"
-            value={
-              form.term_months !== undefined ? String(form.term_months) : ""
-            }
-            onChange={(e) =>
-              setField(
-                "term_months",
-                e.target.value ? Number(e.target.value) : undefined
-              )
-            }
-            className="mt-1"
-            min={1}
-          />
-        </div>
+        {/* Term (mode category saat tambah, atau saat edit untuk update) */}
+        {(storeMode === "category" || isEdit) && (
+          <div>
+            <Label htmlFor="term-input">Term (bulan)</Label>
+            <Input
+              id="term-input"
+              type="number"
+              value={form.term_months !== undefined ? String(form.term_months) : ""}
+              onChange={(e) =>
+                setField("term_months", e.target.value ? Number(e.target.value) : undefined)
+              }
+              className="mt-1"
+              min={1}
+              disabled={isEdit && !form.simpanan_berjangka_category_id}
+            />
+          </div>
+        )}
+
+        {/* Status Bilyet (hanya edit) */}
+        {isEdit && (
+          <div>
+            <Label htmlFor="status-bilyet-select">Status Bilyet</Label>
+            <select
+              id="status-bilyet-select"
+              value={form.status_bilyet ?? ""}
+              onChange={(e) =>
+                setField(
+                  "status_bilyet",
+                  e.target.value ? (e.target.value as SimpananBerjangka["status_bilyet"]) : undefined
+                )
+              }
+              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">— Pilih —</option>
+              <option value="aktif">Aktif</option>
+              <option value="cair">Cair</option>
+              <option value="cair_awal">Cair Awal</option>
+            </select>
+          </div>
+        )}
 
         {/* Deskripsi */}
         <div>
           <Label htmlFor="description-input">Deskripsi</Label>
           <Input
             id="description-input"
-            value={form.description ?? ""}
+            value={form.description}
             onChange={(e) => setField("description", e.target.value)}
             className="mt-1"
           />
         </div>
 
-        {/* Type */}
-        <div className="md:col-span-2">
-          <Label>Tipe</Label>
-          <div className="flex items-center gap-6 mt-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="type"
-                checked={form.type === "manual"}
-                onChange={() => setField("type", "manual")}
-              />
-              <span className="select-none">Manual</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="type"
-                checked={form.type === "automatic"}
-                onChange={() => setField("type", "automatic")}
-              />
-              <span className="select-none">Automatic</span>
-            </label>
+        {/* Type (saat tambah) */}
+        {!isEdit && (
+          <div className="md:col-span-2">
+            <Label>Tipe Pembayaran</Label>
+            <div className="flex items-center gap-6 mt-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="type"
+                  checked={form.type === "manual"}
+                  onChange={() => setField("type", "manual")}
+                />
+                <span className="select-none">Manual</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="type"
+                  checked={form.type === "automatic"}
+                  onChange={() => setField("type", "automatic")}
+                />
+                <span className="select-none">Automatic</span>
+              </label>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Automatic fields */}
-        {form.type === "automatic" && (
+        {!isEdit && form.type === "automatic" && (
           <>
             <div>
               <Label htmlFor="pm-select">Payment Method</Label>
               <select
                 id="pm-select"
                 value={form.payment_method ?? ""}
-                onChange={(e) =>
-                  setField("payment_method", e.target.value || undefined)
-                }
-                className="mt-1 w-full border rounded px-3 py-2 dark:bg-slate-800 dark:border-slate-700"
+                onChange={(e) => setField("payment_method", e.target.value || undefined)}
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
                 <option value="">Pilih metode</option>
-                <option value="bank_transfer">bank_transfer</option>
-                <option value="qris">qris</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="qris">QRIS</option>
               </select>
             </div>
-
             <div>
               <Label htmlFor="pc-select">Payment Channel</Label>
               <select
                 id="pc-select"
                 value={form.payment_channel ?? ""}
-                onChange={(e) =>
-                  setField("payment_channel", e.target.value || undefined)
-                }
-                className="mt-1 w-full border rounded px-3 py-2 dark:bg-slate-800 dark:border-slate-700"
+                onChange={(e) => setField("payment_channel", e.target.value || undefined)}
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
                 <option value="">Pilih channel</option>
-                <option value="bca">bca</option>
-                <option value="bni">bni</option>
-                <option value="bri">bri</option>
-                <option value="cimb">cimb</option>
-                <option value="qris">qris</option>
+                <option value="bca">BCA</option>
+                <option value="bni">BNI</option>
+                <option value="bri">BRI</option>
+                <option value="cimb">CIMB</option>
+                <option value="qris">QRIS</option>
               </select>
             </div>
           </>
@@ -456,22 +602,15 @@ export default function SimpananBerjangkaForm({
         {/* Image */}
         <div className="md:col-span-2">
           <Label htmlFor="image-upload">
-            Image{" "}
-            {form.type === "manual"
-              ? "(wajib untuk manual, max 5MB)"
-              : "(opsional)"}
+            Bukti / Image {form.type === "manual" && !isEdit ? "(wajib, max 5MB)" : "(opsional)"}
           </Label>
           <div className="mt-1 flex flex-col gap-2">
             <input
               id="image-upload"
               type="file"
               accept="image/*"
-              onChange={(e) => {
-                const f = e.target.files?.[0] ?? null;
-                setField("image", f);
-              }}
+              onChange={(e) => setField("image", e.target.files?.[0] ?? null)}
             />
-
             {form.image && (
               <div className="mt-2">
                 <img
@@ -479,46 +618,24 @@ export default function SimpananBerjangkaForm({
                     isFile(form.image)
                       ? URL.createObjectURL(form.image)
                       : typeof form.image === "string"
-                      ? form.image
-                      : undefined
+                        ? form.image
+                        : undefined
                   }
                   alt="preview"
-                  className="max-h-40 object-contain rounded"
+                  className="max-h-40 object-contain rounded border"
                 />
-              </div>
-            )}
-
-            {!form.image && !id && (
-              <div className="mt-1 text-sm text-muted-foreground">
-                Belum ada gambar yang dipilih.
-              </div>
-            )}
-
-            {typeof form.image === "string" && id && (
-              <div className="mt-1 text-sm text-muted-foreground">
-                Gambar saat ini: {form.image.substring(0, 50)}...
               </div>
             )}
           </div>
         </div>
       </div>
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={() => onCancel?.()}>
+      <div className="flex justify-end gap-2 pt-4 border-t">
+        <Button type="button" variant="outline" onClick={() => onCancel?.()}>
           Batal
         </Button>
-        <Button
-          type="submit"
-          onClick={(e) => handleSubmit(e)}
-          disabled={creating || updating}
-        >
-          {id
-            ? updating
-              ? "Menyimpan..."
-              : "Simpan Perubahan"
-            : creating
-            ? "Membuat..."
-            : "Buat"}
+        <Button type="submit" disabled={creating || updating}>
+          {id ? (updating ? "Menyimpan..." : "Simpan Perubahan") : creating ? "Membuat..." : "Buat"}
         </Button>
       </div>
     </form>
