@@ -442,8 +442,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => {
       children: [
         {
           id: "akhir-bulan-akhir-tahun/proses-bunga-simpanan",
-          label: "Proses Bunga Simpanan",
-          href: "/admin/akhir-bulan-akhir-tahun/proses-bunga-simpanan",
+          label: "Proses Akhir Hari",
+          href: "#",
         },
         {
           id: "akhir-bulan-akhir-tahun/proses-eom",
