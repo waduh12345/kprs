@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { MasterBilyetBerjangka } from "@/types/admin/konfigurasi/master-simpanan-berjangka";
 import { formatRupiah, parseRupiah } from "@/lib/format-utils";
 
@@ -29,6 +30,11 @@ const HARI_TENOR_OPTIONS: { value: HariTenor; label: string }[] = [
   { value: 90, label: "90 Hari" },
   { value: 180, label: "180 Hari" },
   { value: 360, label: "360 Hari" },
+];
+
+const METODE_PEMBAYARAN_OPTIONS: { value: "akhir_tenor" | "bulanan"; label: string }[] = [
+  { value: "akhir_tenor", label: "Akhir Tenor" },
+  { value: "bulanan", label: "Bulanan" },
 ];
 
 export default function FormBilyetBerjangka({
@@ -155,9 +161,9 @@ export default function FormBilyetBerjangka({
         <div className="flex flex-col gap-y-1.5">
           <Label>Metode Bunga</Label>
           <Input
-            value={form.metode_bunga ?? ""}
+            value={form.metode_bunga ?? "akrual_harian"}
             onChange={(e) => setForm({ ...form, metode_bunga: e.target.value })}
-            readOnly={readonly}
+            readOnly={true}
             placeholder="Contoh: Tetap"
             className="w-full"
           />
@@ -165,15 +171,27 @@ export default function FormBilyetBerjangka({
 
         <div className="flex flex-col gap-y-1.5">
           <Label>Metode Pembayaran</Label>
-          <Input
+          <Select
             value={form.metode_pembayaran ?? ""}
-            onChange={(e) =>
-              setForm({ ...form, metode_pembayaran: e.target.value })
+            onValueChange={(value) =>
+              setForm({
+                ...form,
+                metode_pembayaran: value as "akhir_tenor" | "bulanan",
+              })
             }
-            readOnly={readonly}
-            placeholder="Contoh: Di muka"
-            className="w-full"
-          />
+            disabled={readonly}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Pilih metode pembayaran" />
+            </SelectTrigger>
+            <SelectContent>
+              {METODE_PEMBAYARAN_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="flex flex-col gap-y-1.5">

@@ -146,7 +146,7 @@ export default function BilyetBerjangkaPage() {
         tenor_bulan: (form.tenor_bulan ?? 3) as TenorBulan,
         hari_tenor: (form.hari_tenor ?? 90) as HariTenor,
         bunga_tahunan: form.bunga_tahunan ?? 0,
-        metode_bunga: form.metode_bunga ?? "",
+        metode_bunga: form.metode_bunga ?? "akrual_harian",
         metode_pembayaran: form.metode_pembayaran ?? "",
         minimal_simpanan: form.minimal_simpanan ?? 0,
         penalti_cair_awal: form.penalti_cair_awal ?? 0,
